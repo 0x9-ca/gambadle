@@ -16,6 +16,7 @@ import {
 import { formatChips, formatDelta } from '../lib/format';
 import { restoreWager, saveWager } from '../lib/lastWager';
 import { revealSeconds } from '../lib/reveal';
+import { useRevealed } from '../lib/useRevealed';
 import { GameBoard } from './boards';
 import { NumberField } from './NumberField';
 import { WagerPicker } from './wagers';
@@ -274,6 +275,7 @@ export function ResultPanel({ result, chips }: { result: RoundResult; chips: num
 	const tone = push ? 'push' : won ? 'win' : 'loss';
 	const delay = revealSeconds(result);
 	useVerdictBuzz(result, chips, delay);
+	const revealed = useRevealed(delay);
 
 	return (
 		<div className="panel panel--table result">
@@ -283,24 +285,23 @@ export function ResultPanel({ result, chips }: { result: RoundResult; chips: num
 					<GameBoard view={result.view} busy={false} onAction={() => {}} animate stake={result.bet} />
 				</div>
 			) : null}
-			<div className={`reveal${result.view ? ' result__verdict' : ''}`} style={{ animationDelay: `${delay}s` }}>
-				<p
-					className={`result__headline result__headline--${tone} result__headline--pop`}
-					style={{ animationDelay: `${delay}s` }}
-				>
-					{push ? 'PUSH' : won ? 'WIN' : 'LOSS'}
-				</p>
-				<p className={`delta delta--${tone}`} style={{ margin: '0.2rem 0' }}>
-					{formatDelta(result.net)}
-				</p>
-				<p className="result__detail">
-					{/* The poker games' recorded bet is the ante; their raises ride on top. */}
-					{titleFor(result.game)} · {formatChips(result.bet)}{' '}
-					{result.game === 'craps' ? 'line bet' : result.game === 'threecard' || result.game === 'ultimate' ? 'ante' : 'staked'}
-					{result.doubled ? ' · doubled' : ''}
-				</p>
-				<p className="result__detail">{result.detail}</p>
-			</div>
+			{revealed ? (
+				<div className={`reveal${result.view ? ' result__verdict' : ''}`}>
+					<p className={`result__headline result__headline--${tone} result__headline--pop`}>
+						{push ? 'PUSH' : won ? 'WIN' : 'LOSS'}
+					</p>
+					<p className={`delta delta--${tone}`} style={{ margin: '0.2rem 0' }}>
+						{formatDelta(result.net)}
+					</p>
+					<p className="result__detail">
+						{/* The poker games' recorded bet is the ante; their raises ride on top. */}
+						{titleFor(result.game)} · {formatChips(result.bet)}{' '}
+						{result.game === 'craps' ? 'line bet' : result.game === 'threecard' || result.game === 'ultimate' ? 'ante' : 'staked'}
+						{result.doubled ? ' · doubled' : ''}
+					</p>
+					<p className="result__detail">{result.detail}</p>
+				</div>
+			) : null}
 		</div>
 	);
 }

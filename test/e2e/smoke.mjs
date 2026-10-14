@@ -76,7 +76,7 @@ const executablePath =
 	process.env.CHROMIUM_PATH ??
 	join(homedir(), '.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell');
 const browser = await chromium.launch({ executablePath });
-const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
 page.on('pageerror', (error) => fail(`page error: ${error.message}`));
 page.on('console', (message) => {
 	if (message.type() === 'error') fail(`console error: ${message.text()}`);
@@ -124,6 +124,7 @@ const seenScreens = new Set();
 let shots = 0;
 let runsStarted = 0;
 let lastProgress = Date.now();
+let lastPhase;
 
 const state = () => page.evaluate(() => fetch('/api/state').then((r) => r.json()));
 
@@ -159,6 +160,13 @@ while (runsStarted <= MAX_RUNS && seenGames.size < GAMES.length) {
 	if (!seenScreens.has(key)) {
 		seenScreens.add(key);
 		await page.waitForTimeout(1200);
+		// A new screen starts at the top (read before the screenshot, which can move the page): the long ones (the roulette table) leave the page
+		// scrolled down, and the board would otherwise sit above the top edge.
+		if (run?.phase !== lastPhase) {
+			const scrolled = await page.evaluate(() => Math.round(window.scrollY));
+			if (lastPhase !== undefined && scrolled > 2) fail(`a new screen opened scrolled ${scrolled}px down (${key})`);
+			lastPhase = run?.phase;
+		}
 		await page.screenshot({
 			path: join(out, `${String(shots++).padStart(3, '0')}-${run?.current?.game ?? run?.upcoming ?? 'home'}.png`),
 			fullPage: true,

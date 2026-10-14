@@ -24,6 +24,7 @@ import { BetScreen, ChoosingScreen, ResultPanel } from './components/screens';
 import { ApiRequestError, fetchState, sendAction } from './lib/api';
 import { formatChips, formatCountdown, formatDay } from './lib/format';
 import { revealSeconds } from './lib/reveal';
+import { useRevealed } from './lib/useRevealed';
 import { saveName } from './lib/savedName';
 
 export default function App() {
@@ -87,6 +88,18 @@ export default function App() {
 
 	const run = view?.run ?? null;
 	const shown = useRevealHold(run);
+
+	// A new screen starts at the top. The long ones (a roulette table to place
+	// chips on, a bet screen under a result) leave the page scrolled down, and
+	// the next board would otherwise appear above the top edge.
+	const phase = run?.phase;
+	const mounted = useRef(false);
+	useEffect(() => {
+		// Skipped on the first mount only. Between runs there is no phase at all
+		// (the start screen), so those changes count too.
+		if (mounted.current) window.scrollTo(0, 0);
+		mounted.current = true;
+	}, [phase]);
 
 	return (
 		<>
@@ -202,13 +215,9 @@ type Act = (action: Action, quiet?: boolean) => Promise<string | null>;
  * each of those gives the outcome away. Hidden panels cannot be tapped.
  */
 function AfterReveal({ result, children }: { result: RoundResult | null; children: ReactNode }) {
-	const delay = revealSeconds(result);
-	if (delay <= 0) return <>{children}</>;
-	return (
-		<div className="reveal" style={{ animationDelay: `${delay}s` }}>
-			{children}
-		</div>
-	);
+	const revealed = useRevealed(revealSeconds(result));
+	if (!revealed) return null;
+	return <div className="reveal">{children}</div>;
 }
 
 function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
@@ -347,8 +356,13 @@ function useRevealHold(run: RunState | null): { run: RunState; chips: number; fl
 		return () => clearTimeout(timer);
 	}, [run, settled]);
 
-	const holding = run !== null && heldUntil === settled;
 	const last = run?.history[settled - 1];
+	// The hold has to begin in the very render a result arrives in. The effect
+	// above only records it afterwards, and for that one render the header would
+	// show (and tint) the new stack, and the round log the new entry.
+	const fresh =
+		seen.current !== null && settled > seen.current && revealSeconds(last ?? null) > 0;
+	const holding = run !== null && (heldUntil === settled || fresh);
 	const target = run ? (holding && last ? run.chips - last.net : run.chips) : 0;
 
 	// Count to the target rather than jumping, unless motion is unwelcome. The
@@ -360,7 +374,10 @@ function useRevealHold(run: RunState | null): { run: RunState; chips: number; fl
 			setChips(target);
 			return;
 		}
-		if (chips === target) return;
+		if (chips === target) {
+			setFlash(null);
+			return;
+		}
 		const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 		setFlash(target > chips ? 'win' : 'loss');
 		const clear = setTimeout(() => setFlash(null), 900);
