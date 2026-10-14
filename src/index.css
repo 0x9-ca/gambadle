@@ -473,6 +473,30 @@ button:disabled {
 	grid-template-rows: repeat(3, 2.1rem);
 	gap: 0.2rem;
 }
+.roulette-grid > * {
+	grid-column: var(--hc);
+	grid-row: var(--hr);
+}
+
+/* Upright on phones: 0 across the top, three columns of twelve, column bets last. */
+@media (max-width: 30rem) {
+	.roulette-grid {
+		grid-template-columns: repeat(3, 1fr);
+		grid-template-rows: 2.2rem repeat(12, 2rem) 2rem;
+		max-width: 16rem;
+		margin-inline: auto;
+	}
+	.roulette-grid > * {
+		grid-column: var(--vc);
+		grid-row: var(--vr);
+	}
+	.roulette-cell {
+		font-size: 0.85rem;
+	}
+	.roulette-cell--column {
+		font-size: 0.75rem;
+	}
+}
 
 .roulette-cell {
 	border-radius: 4px;

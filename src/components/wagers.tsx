@@ -28,7 +28,7 @@ import {
 	rollUnderMultiplier,
 	rollUnderWays,
 } from '../../shared/games';
-import { useState } from 'react';
+import { type CSSProperties, useState } from 'react';
 import type { GameId, RouletteBet, RouletteChip, Wager } from '../../shared/protocol';
 import { formatChips } from '../lib/format';
 import { lastSpread } from '../lib/lastWager';
@@ -208,15 +208,24 @@ function RoulettePicker({
 			</p>
 			{/* Laid out like the table: 0 down the left across all three rows,
 			    3-6-9…36 along the top, 1-4-7…34 along the bottom, and each row's
-			    column bet at its end. */}
+			    column bet at its end. Narrow screens stand the table upright
+			    (0 across the top, columns running down), as phone apps do, so the
+			    cells are big enough to tap. Each cell carries both positions. */}
 			<div className="roulette-grid">
 				{Array.from({ length: ROULETTE_MAX + 1 }, (_, n) => {
 					const amount = amountOn({ kind: 'straight', number: n });
-					// Number n sits in table column ceil(n/3), row 3 - ((n-1) % 3).
-					const position =
+					// Number n sits in table column ceil(n/3), row 3 - ((n-1) % 3); upright,
+					// that is row ceil(n/3) + 1 (after 0), column ((n-1) % 3) + 1.
+					const position = (
 						n === 0
-							? { gridColumn: 1, gridRow: '1 / span 3' }
-							: { gridColumn: Math.ceil(n / 3) + 1, gridRow: 3 - ((n - 1) % 3) };
+							? { '--hc': '1', '--hr': '1 / span 3', '--vc': '1 / span 3', '--vr': '1' }
+							: {
+									'--hc': String(Math.ceil(n / 3) + 1),
+									'--hr': String(3 - ((n - 1) % 3)),
+									'--vc': String(((n - 1) % 3) + 1),
+									'--vr': String(Math.ceil(n / 3) + 1),
+								}
+					) as CSSProperties;
 					return (
 						<button
 							key={n}
@@ -246,7 +255,7 @@ function RoulettePicker({
 							type="button"
 							aria-label={`Bet on column ${column}, pays 2 to 1`}
 							disabled={remaining < 1}
-							style={{ gridColumn: 14, gridRow: row + 1 }}
+							style={{ '--hc': '14', '--hr': String(row + 1), '--vc': String(column), '--vr': '14' } as CSSProperties}
 							className={`roulette-cell roulette-cell--column${amount > 0 ? ' roulette-cell--on' : ''}`}
 							onClick={() => place({ kind: 'column', column })}
 						>

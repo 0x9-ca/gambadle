@@ -245,11 +245,30 @@ function titleFor(game: GameId): string {
 // ---------------------------------------------------------------------------
 
 
-export function ResultPanel({ result }: { result: RoundResult }) {
+/**
+ * A buzz when the verdict lands, where the device supports it (Android
+ * browsers do, iOS Safari does not): a double tap for a win, one long buzz for
+ * a loss of at least a quarter of the stack. Skipped under reduced motion.
+ */
+function useVerdictBuzz(result: RoundResult, chips: number, delay: number): void {
+	useEffect(() => {
+		if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
+		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+		const before = chips - result.net;
+		const pattern =
+			result.net > 0 ? [30, 70, 30] : result.net < 0 && -result.net >= before / 4 ? [180] : null;
+		if (!pattern) return;
+		const timer = setTimeout(() => navigator.vibrate(pattern), delay * 1000);
+		return () => clearTimeout(timer);
+	}, []); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+export function ResultPanel({ result, chips }: { result: RoundResult; chips: number }) {
 	const won = result.net > 0;
 	const push = result.net === 0;
 	const tone = push ? 'push' : won ? 'win' : 'loss';
 	const delay = revealSeconds(result);
+	useVerdictBuzz(result, chips, delay);
 
 	return (
 		<div className="panel panel--table result">

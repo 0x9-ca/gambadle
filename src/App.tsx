@@ -221,7 +221,7 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 		case 'betting':
 			return (
 				<>
-					{lastResult ? <ResultPanel result={lastResult} /> : null}
+					{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
 					<AfterReveal result={lastResult}>
 						<BetScreen run={run} busy={busy} onBegin={(bet) => void act({ type: 'BEGIN_ROUND', bet })} />
 					</AfterReveal>
@@ -252,7 +252,7 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 		case 'don_offer':
 			return (
 				<>
-					{lastResult ? <ResultPanel result={lastResult} /> : null}
+					{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
 					<AfterReveal result={lastResult}>
 						<DoubleOrNothing
 							run={run}
@@ -267,7 +267,7 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 		case 'finished':
 			return (
 				<>
-					{lastResult ? <ResultPanel result={lastResult} /> : null}
+					{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
 					<AfterReveal result={lastResult}>
 						<NameEntryHost run={run} busy={busy} act={act} />
 					</AfterReveal>
