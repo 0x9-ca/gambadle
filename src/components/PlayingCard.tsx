@@ -6,6 +6,9 @@
  */
 
 import type { CardView, Suit } from '../../shared/protocol';
+import { type CardMotion, cardPlan } from '../lib/dealTiming';
+
+export type { CardMotion };
 
 const SUIT_PIP: Record<Suit, string> = {
 	s: '♠',
@@ -29,12 +32,6 @@ const RANK_TEXT: Record<number, string> = {
 	12: 'Q',
 	13: 'K',
 };
-
-/**
- * How a card arrives: `deal` slides it in, `flip` turns a face-down card over,
- * `still` is for a card the player has already seen.
- */
-export type CardMotion = 'deal' | 'flip' | 'still';
 
 export function PlayingCard({
 	card,
@@ -115,24 +112,7 @@ export function Hand({
 	return (
 		<div className={`hand${size}`}>
 			{cards.map((card, index) => {
-				let motion: CardMotion = 'deal';
-				let delay = 0;
-				if (index === flip) {
-					motion = 'flip';
-					delay = 600;
-				} else if (index < still) {
-					motion = 'still';
-				} else if (flip >= 0 && index < flip) {
-					// Cards dealt before the one that turns over land first.
-					delay = index * 150;
-				} else if (still > 0 || flip >= 0) {
-					// New cards on a result board arrive one after another, after any flip.
-					delay = (flip >= 0 ? 900 : 0) + Math.max(0, index - Math.max(still, flip + 1)) * 250;
-				} else {
-					// An opening deal: the first two cards of a hand land in quick sequence,
-					// while a later hit arrives at once.
-					delay = index < 2 ? index * 150 : 0;
-				}
+				const { motion, delay } = cardPlan(index, still, flip);
 				return (
 					// Cards have no stable id across a deal, so the index is the identity.
 					// eslint-disable-next-line react/no-array-index-key

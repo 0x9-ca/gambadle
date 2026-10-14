@@ -9,6 +9,8 @@
 import { useEffect, useState } from 'react';
 import { colorOf, SLOT_LINES, SLOT_SYMBOLS } from '../../shared/games';
 import type { Action, CardView, GameId, GameView, HandView, PaiGowSplit } from '../../shared/protocol';
+import { DEAL_MS, handDoneMs } from '../lib/dealTiming';
+import { useRevealed } from '../lib/useRevealed';
 import { Actions, Die, Note, prefersReducedMotion, useRollOnMount, useTick } from './boardKit';
 import { Hand, PlayingCard } from './PlayingCard';
 import { MegaSlotsBoard } from './MegaSlots';
@@ -84,6 +86,7 @@ function BoardRow({
 	active = false,
 	still,
 	flip,
+	gate = false,
 }: {
 	still?: number;
 	flip?: number;
@@ -92,7 +95,10 @@ function BoardRow({
 	/** Games whose hands are not scored by a running total hide it. */
 	showTotal?: boolean;
 	active?: boolean;
+	/** On a result board, hold the total back until this hand's cards have landed. */
+	gate?: boolean;
 }) {
+	const landed = useRevealed(gate ? handDoneMs(hand.cards.length, still, flip) / 1000 : 0);
 	return (
 		<div className={`board__row${active ? ' board__row--active' : ''}`}>
 			<span className="board__label">{label}</span>
@@ -100,7 +106,7 @@ function BoardRow({
 			{/* Poker hands have no running total, so they leave the column out. */}
 			{showTotal ? (
 				<span className="board__total">
-					{hand.hidden ? '—' : <Total hand={hand} />}
+					{hand.hidden || !landed ? '—' : <Total hand={hand} />}
 					{hand.doubled ? <span className="faint"> ×2</span> : null}
 				</span>
 			) : null}
@@ -116,6 +122,16 @@ function BoardRow({
 
 function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>) {
 	const split = view.hands.length > 1;
+	// The TriLux result is read off the first cards, so it waits for every row to finish dealing.
+	const seen = animate && !view.opening;
+	const dealt = useRevealed(
+		animate
+			? Math.max(
+					handDoneMs(view.dealer.cards.length, seen ? 1 : 0, 1),
+					...view.hands.map((h) => handDoneMs(h.cards.length, seen ? h.cards.length : 0))
+				) / 1000
+			: 0
+	);
 	const button = (type: 'HIT' | 'STAND' | 'DOUBLE' | 'SPLIT' | 'INSURE' | 'NO_INSURANCE', label: string, primary = false) => (
 		<button
 			type="button"
@@ -135,6 +151,7 @@ function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>)
 				hand={view.dealer}
 				still={animate && !view.opening ? 1 : undefined}
 				flip={animate ? 1 : undefined}
+				gate={animate}
 			/>
 			{view.hands.map((hand, index) => (
 				<BoardRow
@@ -144,10 +161,11 @@ function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>)
 					active={split && !view.resolved && index === view.active}
 					// A round that ended on the deal was never seen in play, so deal it out.
 					still={animate && !view.opening ? hand.cards.length : undefined}
+					gate={animate}
 				/>
 			))}
 			<Note>Blackjack pays 3:2. Dealer stands on all 17s.</Note>
-			{view.trilux ? (
+			{view.trilux && dealt ? (
 				<Note>
 					TriLux ({view.trilux.bet}):{' '}
 					{view.trilux.hand ? `${view.trilux.hand} pays ${view.trilux.pays}:1` : 'no hand, lost'}
@@ -289,13 +307,18 @@ function RouletteBoard({ view, busy, onAction, animate }: BoardOf<'roulette'>) {
 // ---------------------------------------------------------------------------
 
 function BaccaratBoard({ view, busy, onAction, animate }: BoardOf<'baccarat'>) {
+	// A pair is read off the opening cards, which on a coup settled by the deal have not landed yet.
+	const still = animate && !view.opening ? 2 : undefined;
+	const dealt = useRevealed(
+		animate ? Math.max(handDoneMs(view.player.cards.length, still), handDoneMs(view.banker.cards.length, still)) / 1000 : 0
+	);
 	return (
 		<div className="board">
 			{/* The opening two cards were seen before Deal; only third cards are new.
 			    When the deal settled the coup itself, nothing was seen yet, so deal them all. */}
-			<BoardRow label="Player" hand={view.player} still={animate && !view.opening ? 2 : undefined} />
-			<BoardRow label="Banker" hand={view.banker} still={animate && !view.opening ? 2 : undefined} />
-			{view.playerPair || view.bankerPair ? (
+			<BoardRow label="Player" hand={view.player} still={still} gate={animate} />
+			<BoardRow label="Banker" hand={view.banker} still={still} gate={animate} />
+			{(view.playerPair || view.bankerPair) && dealt ? (
 				<Note>
 					{view.playerPair && view.bankerPair
 						? 'Both sides hold a pair'
@@ -476,6 +499,8 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 // ---------------------------------------------------------------------------
 
 function ThreeCardBoard({ view, busy, onAction, animate }: BoardOf<'threecard'>) {
+	// The dealer's hand name and whether they qualify wait for the dealer's cards to land.
+	const dealerLanded = useRevealed(animate && view.dealer ? handDoneMs(view.dealer.cards.length) / 1000 : 0);
 	return (
 		<div className="board">
 			<BoardRow
@@ -492,12 +517,12 @@ function ThreeCardBoard({ view, busy, onAction, animate }: BoardOf<'threecard'>)
 				<>
 					<BoardRow label="Dealer" hand={view.dealer} showTotal={false} />
 					<p className="board__label" style={{ margin: 0 }}>
-						{view.dealerRank}
+						{dealerLanded ? view.dealerRank : '—'}
 					</p>
 				</>
 			) : null}
 			{view.resolved ? (
-				view.dealerQualifies === false ? (
+				view.dealerQualifies === false && dealerLanded ? (
 					<Note>Dealer does not qualify (needs queen high).</Note>
 				) : null
 			) : (
@@ -532,6 +557,27 @@ function ThreeCardBoard({ view, busy, onAction, animate }: BoardOf<'threecard'>)
 const UNSEEN: CardView = { rank: 10, suit: 's' };
 
 /** A row of cards where the first `shown` are face up and the rest face down. */
+/**
+ * When card `index` of a CardsRow starts to land. On a result board only the
+ * cards past `still` are new, each after the last. In live play the flop's three
+ * cards land one by one, as do the turn and river.
+ */
+function rowDelay(index: number, slots: number, still: number | undefined): number {
+	if (still !== undefined) return Math.max(0, index - still) * 200;
+	return (slots === 5 && index >= 3 ? index - 3 : index) * 150;
+}
+
+/** When the last face-up card of a CardsRow has landed (0 if none are animated). */
+function cardsRowDoneMs(count: number, slots: number, still: number | undefined, stacked: boolean): number {
+	let done = 0;
+	for (let i = 0; i < count; i++) {
+		if (still !== undefined && i < still) continue;
+		// A stacked row (Pai Gow) deals all its cards at once.
+		done = Math.max(done, (stacked ? 0 : rowDelay(i, slots, still)) + DEAL_MS);
+	}
+	return done;
+}
+
 function CardsRow({
 	label,
 	cards,
@@ -549,12 +595,14 @@ function CardsRow({
 	/** Label and note above the cards, for rows too wide to share a line. */
 	stacked?: boolean;
 }) {
+	// The note (a hand's name, a tick or cross) waits for this row's cards to land.
+	const landed = useRevealed(cardsRowDoneMs(cards.length, slots, still, stacked) / 1000);
 	if (stacked) {
 		return (
 			<div className="board__stack">
 				<div className="board__row">
 					<span className="board__label">{label}</span>
-					{note ? <span className="board__label board__note">{note}</span> : null}
+					{note && landed ? <span className="board__label board__note">{note}</span> : null}
 				</div>
 				<div className="hand hand--compact">
 					{cards.map((card, index) => (
@@ -580,24 +628,21 @@ function CardsRow({
 							// Face-up cards deal in as they are revealed; on a result board only
 							// the ones past `still` are new.
 							motion={card && (still === undefined || index >= still) ? 'deal' : 'still'}
-							delay={
-								!card
-									? 0
-									: still !== undefined
-										? Math.max(0, index - still) * 200
-										: // Live play: the flop's three cards land one by one, as do the turn and river.
-											(slots === 5 && index >= 3 ? index - 3 : index) * 150
-							}
+							delay={card ? rowDelay(index, slots, still) : 0}
 						/>
 					);
 				})}
 			</div>
-			{note !== undefined ? <span className="board__label board__note">{note}</span> : null}
+			{note !== undefined ? <span className="board__label board__note">{landed ? note : ''}</span> : null}
 		</div>
 	);
 }
 
 function UltimateBoard({ view, busy, onAction, animate }: BoardOf<'ultimate'>) {
+	// Whether the dealer qualifies is read off their cards, which land after the board.
+	const dealerLanded = useRevealed(
+		animate && view.dealer ? cardsRowDoneMs(view.dealer.cards.length, 2, 0, false) / 1000 : 0
+	);
 	const raise = (multiple: number) => (
 		<button
 			key={multiple}
@@ -627,7 +672,7 @@ function UltimateBoard({ view, busy, onAction, animate }: BoardOf<'ultimate'>) {
 			{view.resolved ? (
 				view.folded ? (
 					<Note>You folded.</Note>
-				) : view.dealerQualifies === false ? (
+				) : view.dealerQualifies === false && dealerLanded ? (
 					<Note>Dealer does not qualify (needs a pair); the ante pushes.</Note>
 				) : null
 			) : (

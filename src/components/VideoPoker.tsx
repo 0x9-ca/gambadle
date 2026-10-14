@@ -10,6 +10,8 @@
 import { useState } from 'react';
 import { VP_KINDS, VP_LABEL, VP_PAYS, type VpKind } from '../../shared/games';
 import type { Action, GameView } from '../../shared/protocol';
+import { DEAL_MS } from '../lib/dealTiming';
+import { useRevealed } from '../lib/useRevealed';
 import { Actions, Note } from './boardKit';
 import { PlayingCard } from './PlayingCard';
 
@@ -31,7 +33,10 @@ export function VideoPokerBoard({
 	const held = drawn ? view.held : hold;
 	const toggle = (index: number) =>
 		setHold((current) => (current.includes(index) ? current.filter((i) => i !== index) : [...current, index]));
-	const kind = view.kind as VpKind | null;
+	// What the hand is (and what it pays) waits for the replacement cards to land.
+	const lastFresh = [0, 1, 2, 3, 4].filter((i) => !view.held.includes(i)).pop() ?? 0;
+	const landed = useRevealed(drawn && animate ? (lastFresh * 140 + DEAL_MS) / 1000 : 0);
+	const kind = (landed ? view.kind : drawn ? null : view.kind) as VpKind | null;
 
 	return (
 		<div className="board">
@@ -63,7 +68,7 @@ export function VideoPokerBoard({
 			</div>
 
 			<p className={`vp__rank${kind ? ' vp__rank--pays' : ''}`} aria-live="polite">
-				{kind ? VP_LABEL[kind] : drawn ? 'No pair of jacks or better' : 'Tap cards to hold'}
+				{kind ? VP_LABEL[kind] : drawn ? (landed ? 'No pair of jacks or better' : 'Drawing…') : 'Tap cards to hold'}
 				{kind && drawn ? <span className="vp__pays"> pays {VP_PAYS[kind] === 1 ? 'your bet back' : `${VP_PAYS[kind]}×`}</span> : null}
 			</p>
 

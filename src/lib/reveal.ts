@@ -7,6 +7,7 @@
  */
 
 import type { GameId, RoundResult } from '../../shared/protocol';
+import { handDoneMs } from './dealTiming';
 import { BASE_DONE, megaEnd } from './megaTimeline';
 
 const REVEAL_SECONDS: Record<GameId, number> = {
@@ -29,5 +30,11 @@ export function revealSeconds(result: RoundResult | null): number {
 	if (!result?.view) return 0;
 	// Mega Slots plays its free spins on the result board, so it takes as long as they do.
 	if (result.view.game === 'megaslots') return megaEnd(result.view.free.length) / 1000 + 0.2;
+	// Blackjack's dealer may turn a card and then draw several, which takes as long as it takes.
+	if (result.view.game === 'blackjack') {
+		const seen = !result.view.opening;
+		const dealing = handDoneMs(result.view.dealer.cards.length, seen ? 1 : 0, 1) / 1000;
+		return Math.max(REVEAL_SECONDS.blackjack, dealing + 0.2);
+	}
 	return REVEAL_SECONDS[result.game];
 }
