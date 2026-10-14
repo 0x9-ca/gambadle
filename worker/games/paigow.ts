@@ -208,6 +208,13 @@ function view(s: PaiGowState): GameView {
 		hand: handView(s.player),
 		// Only a hint while the hand is being set; afterwards it is the hand played.
 		houseWay: s.low ?? houseWay(s.player),
+		splits: s.done
+			? []
+			: legalSplits(s.player).map((split) => ({
+					low: split.low,
+					highRank: split.high.label,
+					lowRank: split.lowHand.label,
+				})),
 		player: s.low ? splitView(s.player, s.low) : null,
 		dealer: s.done ? splitView(s.dealer, dealerLow(s)) : null,
 		results: s.done ? results(s) : null,

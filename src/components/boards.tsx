@@ -723,6 +723,11 @@ function PaiGowBoard({ view, busy, onAction }: BoardOf<'paigow'>) {
 					: [current[1]!, index]
 		);
 
+	// The server lists every legal split by name; the pick is looked up there.
+	const picked =
+		low.length === 2 ? view.splits.find((split) => split.low.includes(low[0]!) && split.low.includes(low[1]!)) : undefined;
+	const foul = low.length === 2 && !picked;
+
 	if (view.resolved && view.player && view.dealer) {
 		return (
 			<div className="board">
@@ -753,6 +758,22 @@ function PaiGowBoard({ view, busy, onAction }: BoardOf<'paigow'>) {
 					</button>
 				))}
 			</div>
+			<div className={`split-preview${foul ? ' split-preview--foul' : ''}`} aria-live="polite">
+				{picked ? (
+					<>
+						<span>
+							<span className="board__label">High</span> {picked.highRank}
+						</span>
+						<span>
+							<span className="board__label">Low</span> {picked.lowRank}
+						</span>
+					</>
+				) : foul ? (
+					<span>Not allowed: the low hand would beat the high hand.</span>
+				) : (
+					<span className="faint">Pick {2 - low.length} more for the low hand.</span>
+				)}
+			</div>
 			<Note>The five-card high hand must outrank the two-card low hand. The joker is an ace, or completes a straight or flush.</Note>
 			<Actions>
 				<button type="button" className="btn" disabled={busy} onClick={() => onAction({ type: 'HOUSE_WAY' })}>
@@ -761,7 +782,7 @@ function PaiGowBoard({ view, busy, onAction }: BoardOf<'paigow'>) {
 				<button
 					type="button"
 					className="btn btn--primary"
-					disabled={busy || low.length !== 2}
+					disabled={busy || !picked}
 					onClick={() => onAction({ type: 'SET_HAND', low })}
 				>
 					Set hand

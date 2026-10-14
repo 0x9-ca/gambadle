@@ -660,6 +660,29 @@ button:disabled {
 	text-transform: none;
 }
 
+/* Pai Gow: what the current pick makes, named by the server. */
+.split-preview {
+	display: flex;
+	justify-content: space-between;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+	padding: 0.55rem 0.75rem;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	font-weight: 600;
+	font-size: 0.9rem;
+	min-height: 2.6rem;
+	align-items: center;
+}
+.split-preview .board__label {
+	margin-right: 0.3rem;
+}
+.split-preview--foul {
+	border-color: var(--loss);
+	color: var(--loss);
+}
+
 /* Pai Gow: the seven cards are buttons; the two picked for the low hand lift. */
 .pick-hand {
 	justify-content: center;

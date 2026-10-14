@@ -307,6 +307,20 @@ describe('Pai Gow Poker', () => {
 		expect(handler.legalActions(done.state)).toEqual([]);
 	});
 
+	it('names every legal split in the view, and leaves fouls out', () => {
+		const s = rigged('As Ad Kc 9h 7s 4d 2c', '3s 5d 8c Th Js Qd 6c');
+		const view = handler.view(s) as V;
+		const has = (a: number, b: number) => view.splits.some((x) => x.low.includes(a) && x.low.includes(b));
+		expect(has(2, 3)).toBe(true); // K-9 low behind a pair of aces
+		expect(has(0, 1)).toBe(false); // aces low would foul
+		expect(view.splits.find((x) => x.low.includes(2) && x.low.includes(3))).toMatchObject({
+			highRank: 'Pair of Aces',
+			lowRank: 'King-9',
+		});
+		const done = handler.apply(s, { type: 'HOUSE_WAY' });
+		expect((done.view as V).splits).toEqual([]);
+	});
+
 	it('refuses a low hand that outranks the high hand, and malformed picks', () => {
 		// Putting the aces low leaves king high in the five-card hand.
 		const s = rigged('As Ad Kc 9h 7s 4d 2c', '3s 5d 8c Th Js Qd 6c');

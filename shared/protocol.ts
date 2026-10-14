@@ -272,6 +272,13 @@ export type GameView = GameViewBase &
 				hand: HandView;
 				/** Indices into `hand` the house way would put in the low hand. */
 				houseWay: number[];
+				/**
+				 * Every legal way to set the hand, with both hands named, so the board
+				 * can name a split as it is picked without ranking hands itself. A pick
+				 * missing from this list would put the low hand above the high hand.
+				 * Empty once the hand is played.
+				 */
+				splits: { low: number[]; highRank: string; lowRank: string }[];
 				/** Set once the hand is played. */
 				player: PaiGowSplit | null;
 				dealer: PaiGowSplit | null;
