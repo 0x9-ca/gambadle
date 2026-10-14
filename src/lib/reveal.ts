@@ -21,6 +21,7 @@ const REVEAL_SECONDS: Record<GameId, number> = {
 	paigow: 0.8,
 	megaslots: BASE_DONE / 1000,
 	videopoker: 1.2,
+	craps: 1.1,
 };
 
 export function revealSeconds(result: RoundResult | null): number {

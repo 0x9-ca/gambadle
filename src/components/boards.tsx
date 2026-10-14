@@ -12,6 +12,7 @@ import type { Action, CardView, GameId, GameView, HandView, PaiGowSplit } from '
 import { Actions, Die, Note, prefersReducedMotion, useRollOnMount, useTick } from './boardKit';
 import { Hand, PlayingCard } from './PlayingCard';
 import { MegaSlotsBoard } from './MegaSlots';
+import { CrapsBoard } from './Craps';
 import { VideoPokerBoard } from './VideoPoker';
 import { SlotIcon } from './SlotIcon';
 import { SlotsPaytable } from './wagers';
@@ -58,6 +59,8 @@ export function GameBoard(props: BoardProps & { view: GameView }) {
 			return <MegaSlotsBoard {...props} view={props.view} />;
 		case 'videopoker':
 			return <VideoPokerBoard {...props} view={props.view} />;
+		case 'craps':
+			return <CrapsBoard {...props} view={props.view} />;
 	}
 }
 

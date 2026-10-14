@@ -15,6 +15,8 @@ import {
 	ROULETTE_MAX,
 	SLOT_PAYTABLE,
 	SLOT_SYMBOLS,
+	CRAPS_FIELD,
+	CRAPS_MAX_ODDS,
 	TCP_ANTE_BONUS,
 	TCP_PAIR_PLUS,
 	TCP_RANKS,
@@ -61,6 +63,8 @@ export function WagerPicker({ game, wager, stack, bet, onChange }: Props) {
 			return <BlackjackPicker wager={wager} stack={stack} bet={bet} onChange={onChange} />;
 		case 'ultimate':
 			return <UltimatePicker wager={wager} stack={stack} bet={bet} onChange={onChange} />;
+		case 'craps':
+			return <CrapsPicker wager={wager} stack={stack} bet={bet} onChange={onChange} />;
 		default:
 			return null;
 	}
@@ -637,6 +641,61 @@ function BlackjackPicker({
 }
 
 const odds = (n: number) => (n === 1.5 ? '3:2' : `${n}:1`);
+
+function CrapsPicker({
+	wager,
+	stack,
+	bet,
+	onChange,
+}: {
+	wager: Wager;
+	stack: number;
+	bet: number;
+	onChange: (w: Wager) => void;
+}) {
+	if (wager.game !== 'craps') return null;
+	const { side } = wager.bet;
+	const field = wager.bet.field ?? 0;
+	// The line bet and the room for its odds are already set aside.
+	const max = Math.max(0, stack - bet * (1 + CRAPS_MAX_ODDS));
+	const set = (next: { side: 'pass' | 'dontpass'; field?: number }) =>
+		onChange({ game: 'craps', bet: next.field ? next : { side: next.side } });
+
+	return (
+		<div className="wager">
+			<p className="board__label" style={{ marginBottom: '0.35rem' }}>
+				Line bet — {bet}
+			</p>
+			<div className="choice-grid choice-grid--2">
+				{(
+					[
+						{ side: 'pass', label: 'Pass line', note: '1:1 · 1.41% edge' },
+						{ side: 'dontpass', label: "Don't pass", note: '1:1 · bar 12 · 1.36% edge' },
+					] as const
+				).map((option) => (
+					<button
+						key={option.side}
+						type="button"
+						className={`choice${side === option.side ? ' choice--on' : ''}`}
+						onClick={() => set({ side: option.side, field })}
+					>
+						{option.label}
+						<span className="choice__odds">{option.note}</span>
+					</button>
+				))}
+			</div>
+			<p className="faint" style={{ margin: '0.6rem 0 0' }}>
+				Once a point is set you can add free odds up to {CRAPS_MAX_ODDS}× your line bet at true odds, so up to{' '}
+				{bet * (1 + CRAPS_MAX_ODDS) + field} chips can be at risk.
+			</p>
+			<SideBetSlider label="Field" value={field} max={max} onChange={(value) => set({ side, field: value })} />
+			<p className="faint" style={{ margin: '0.4rem 0 0' }}>
+				Field wins on 2, 3, 4, 9, 10, 11, 12 on the first roll: 2 pays {CRAPS_FIELD[2]}:1 and 12 pays{' '}
+				{CRAPS_FIELD[12]}:1, the rest 1:1.
+			</p>
+		</div>
+	);
+}
 
 function UltimatePicker({
 	wager,

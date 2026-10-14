@@ -22,7 +22,7 @@
  * asks for the next phase, which keeps the "what happened" beat readable.
  */
 
-import { UTH_MAX_ANTES } from '../shared/games';
+import { CRAPS_MAX_ODDS, UTH_MAX_ANTES } from '../shared/games';
 import {
 	type Action,
 	GAME_IDS,
@@ -81,7 +81,8 @@ function draw<T>(run: RunState, label: string, fn: () => T): T {
  * bet alongside the ante, so it can only ever commit half — which is why an
  * all-in round that draws three card poker antes half the stack rather than
  * becoming a round the player cannot afford to play. Ultimate Texas Hold'em
- * needs a Blind and room for a 4x raise, so its ante is at most a sixth.
+ * needs a Blind and room for a 4x raise, so its ante is at most a sixth, and
+ * craps keeps room for the most free odds, so its line bet is at most a third.
  *
  * The TriLux and Trips side bets are optional and checked like baccarat's.
  *
@@ -91,6 +92,7 @@ function draw<T>(run: RunState, label: string, fn: () => T): T {
 function maxStake(game: GameId, chips: number): number {
 	if (game === 'threecard') return Math.floor(chips / 2);
 	if (game === 'ultimate') return Math.floor(chips / UTH_MAX_ANTES);
+	if (game === 'craps') return Math.floor(chips / (1 + CRAPS_MAX_ODDS));
 	return chips;
 }
 
@@ -142,6 +144,13 @@ function rebaseWager(wager: Wager, stake: number, chips: number): Wager {
 			const trips = Math.min(wager.bet.trips ?? 0, room);
 			return trips > 0 ? { game: 'ultimate', bet: { ante: stake, trips } } : { game: 'ultimate', bet: { ante: stake } };
 		}
+		case 'craps': {
+			// The line bet follows the stake, the side stays, and the Field is
+			// trimmed to what is left after the line bet and its room for odds.
+			const room = Math.max(0, chips - stake * (1 + CRAPS_MAX_ODDS));
+			const field = Math.min(wager.bet.field ?? 0, room);
+			return { game: 'craps', bet: field > 0 ? { side: wager.bet.side, field } : { side: wager.bet.side } };
+		}
 		case 'blackjack': {
 			// TriLux keeps its size, trimmed to what the stack has after the main bet.
 			if (!wager.trilux) return wager;
@@ -170,8 +179,8 @@ function rebaseWager(wager: Wager, stake: number, chips: number): Wager {
  * Chooses the next game: uniformly at random from those not yet played, so the
  * five rounds of a run are always five different games.
  *
- * Games this stack is too small to join are left out: three card poker below
- * two chips, and Ultimate Texas Hold'em below six, since their antes need
+ * Games this stack is too small to join are left out: craps below three
+ * chips, three card poker below two, and Ultimate Texas Hold'em below six, since their antes need
  * matching bets alongside.
  */
 export function chooseGame(played: readonly GameId[], chips?: number): GameId {
@@ -222,6 +231,9 @@ export function defaultWager(gameId: GameId, bet: number): Wager {
 			return { game: 'megaslots' };
 		case 'videopoker':
 			return { game: 'videopoker' };
+		case 'craps':
+			// The engine's bet is the line bet; odds are taken once a point is set.
+			return { game: 'craps', bet: { side: 'pass' } };
 	}
 }
 

@@ -22,6 +22,7 @@ export const GAME_IDS = [
 	'paigow',
 	'megaslots',
 	'videopoker',
+	'craps',
 ] as const;
 
 export type GameId = (typeof GAME_IDS)[number];
@@ -142,6 +143,13 @@ export type UltimateBet = {
 	trips?: number;
 };
 
+/** Craps: a line bet on the shooter, and an optional one-roll Field bet beside it. */
+export type CrapsBet = {
+	side: 'pass' | 'dontpass';
+	/** Chips on the Field, settled on the first roll. */
+	field?: number;
+};
+
 export type ThreeCardBet = {
 	ante: number;
 	/** Optional Pair Plus side bet. */
@@ -164,7 +172,8 @@ export type Wager =
 	| { game: 'ultimate'; bet: UltimateBet }
 	| { game: 'paigow' }
 	| { game: 'megaslots' }
-	| { game: 'videopoker' };
+	| { game: 'videopoker' }
+	| { game: 'craps'; bet: CrapsBet };
 
 export type AnyGameState = unknown;
 
@@ -269,6 +278,24 @@ export type GameView = GameViewBase &
 				dealerRank: string | null;
 				dealerQualifies: boolean | null;
 				folded: boolean;
+		  }
+		| {
+				game: 'craps';
+				side: 'pass' | 'dontpass';
+				/** The point once set on the come-out roll, else null. */
+				point: number | null;
+				/** Every roll so far, in order. */
+				rolls: { dice: [number, number]; total: number }[];
+				/** Chips on the odds bet, 0 if none. */
+				odds: number;
+				/** Odds on offer right now: the multiple of the line bet and what it costs. */
+				oddsOffer: { multiple: number; chips: number }[];
+				/** What the odds pay at this point: win chips per chips laid, as [win, per]. Null before a point. */
+				oddsRatio: [number, number] | null;
+				/** The Field bet, once the first roll has decided it. */
+				field: { bet: number; won: boolean | null; pays: number } | null;
+				/** How the line bet ended, once it has. */
+				result: 'win' | 'lose' | 'push' | null;
 		  }
 		| {
 				game: 'videopoker';

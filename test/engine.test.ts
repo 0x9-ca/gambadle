@@ -29,6 +29,7 @@ vi.mock(import('../worker/rng'), async () => await import('./helpers/seeded-rng'
 function maxStakeFor(game: GameId, chips: number): number {
 	if (game === 'threecard') return Math.floor(chips / 2);
 	if (game === 'ultimate') return Math.floor(chips / 6);
+	if (game === 'craps') return Math.floor(chips / 3);
 	return chips;
 }
 

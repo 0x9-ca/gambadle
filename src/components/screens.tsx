@@ -109,7 +109,7 @@ export function BetScreen({
 				disabled={busy || bet < MIN_BET || bet > max}
 				onClick={() => onBegin(bet)}
 			>
-				{run.upcoming && ANTE_NOTE[run.upcoming] ? 'Ante' : 'Place'} {formatChips(bet)} chips
+				{run.upcoming === 'craps' ? 'Line bet' : run.upcoming && ANTE_NOTE[run.upcoming] ? 'Ante' : 'Place'} {formatChips(bet)} chips
 			</button>
 
 				</>
@@ -130,6 +130,8 @@ export function BetScreen({
  * rather than discovered on the wager screen.
  */
 const ANTE_NOTE: Partial<Record<string, string>> = {
+	craps:
+		'Your bet is the line bet. Once a point is set you can add free odds up to 2× it, so up to three times it is at risk (all in bets a third of your stack).',
 	threecard: 'Your bet is the ante. Playing the hand adds an equal Play bet, so up to twice it is at risk (all in antes half your stack).',
 	ultimate:
 		"Your bet is the ante. A matching Blind goes out with it and you can raise up to 4x, so up to six times it is at risk (all in antes a sixth of your stack).",
@@ -238,6 +240,7 @@ function titleFor(game: GameId): string {
 			paigow: 'Pai Gow Poker',
 			megaslots: 'Mega Slots',
 			videopoker: 'Video Poker',
+			craps: 'Craps',
 		}[game]
 	);
 }
@@ -293,7 +296,7 @@ export function ResultPanel({ result, chips }: { result: RoundResult; chips: num
 				<p className="result__detail">
 					{/* The poker games' recorded bet is the ante; their raises ride on top. */}
 					{titleFor(result.game)} · {formatChips(result.bet)}{' '}
-					{result.game === 'threecard' || result.game === 'ultimate' ? 'ante' : 'staked'}
+					{result.game === 'craps' ? 'line bet' : result.game === 'threecard' || result.game === 'ultimate' ? 'ante' : 'staked'}
 					{result.doubled ? ' · doubled' : ''}
 				</p>
 				<p className="result__detail">{result.detail}</p>

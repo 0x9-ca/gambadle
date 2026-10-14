@@ -364,3 +364,46 @@ export const VP_PAYS: Record<VpKind, number> = {
 	twopair: 2,
 	jacks: 1,
 };
+
+// ---------------------------------------------------------------------------
+// Craps
+// ---------------------------------------------------------------------------
+
+/** The most free odds a player may take, as a multiple of the line bet. */
+export const CRAPS_MAX_ODDS = 2;
+
+/**
+ * Rolls dealt up front. After the come-out, every roll ends the round with at
+ * least a one in six chance (the seven), so the chance of a round using all of
+ * them is below (5/6)^100, about one in 80 million, and then every stake is
+ * handed back.
+ */
+export const CRAPS_MAX_ROLLS = 100;
+
+export const CRAPS_POINTS = [4, 5, 6, 8, 9, 10] as const;
+
+/** Odds on a pass line bet pay true odds: win this many chips per this many laid, by point. */
+export const CRAPS_PASS_ODDS: Record<number, readonly [number, number]> = {
+	4: [2, 1],
+	10: [2, 1],
+	5: [3, 2],
+	9: [3, 2],
+	6: [6, 5],
+	8: [6, 5],
+};
+
+/** Odds laid against the point (don't pass) pay the reverse. */
+export const CRAPS_LAY_ODDS: Record<number, readonly [number, number]> = {
+	4: [1, 2],
+	10: [1, 2],
+	5: [2, 3],
+	9: [2, 3],
+	6: [5, 6],
+	8: [5, 6],
+};
+
+/**
+ * Field bet profit per chip, by the total rolled. Anything else loses. Twelve
+ * pays triple, which puts the house edge at 2.78%.
+ */
+export const CRAPS_FIELD: Record<number, number> = { 2: 2, 3: 1, 4: 1, 9: 1, 10: 1, 11: 1, 12: 3 };

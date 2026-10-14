@@ -30,7 +30,7 @@ const BASE = `http://localhost:${PORT}`;
 const MAX_RUNS = 25;
 /** How long a screen may offer nothing to press (a reveal plays out first). */
 const STUCK_MS = 9000;
-const GAMES = ['blackjack', 'roulette', 'baccarat', 'coinflip', 'dice', 'slots', 'threecard', 'ultimate', 'paigow', 'megaslots', 'videopoker'];
+const GAMES = ['blackjack', 'roulette', 'baccarat', 'coinflip', 'dice', 'slots', 'threecard', 'ultimate', 'paigow', 'megaslots', 'videopoker', 'craps'];
 
 const failures = [];
 const fail = (message) => {
@@ -95,6 +95,7 @@ const PRIORITY = [
 	'Play again',
 	'Place',
 	'Ante',
+	'Line bet',
 	'Go to the table',
 	'Rebet',
 	'Confirm',
@@ -107,7 +108,9 @@ const PRIORITY = [
 	'Play',
 	'Deal',
 	'Spin',
+	'Take 2',
 	'Roll',
+	'Roll again',
 	'Draw',
 	'Flip',
 	'Keep it',
@@ -154,7 +157,10 @@ while (runsStarted <= MAX_RUNS && seenGames.size < GAMES.length) {
 	if (!seenScreens.has(key)) {
 		seenScreens.add(key);
 		await page.waitForTimeout(1200);
-		await page.screenshot({ path: join(out, `${String(shots++).padStart(3, '0')}.png`), fullPage: true });
+		await page.screenshot({
+			path: join(out, `${String(shots++).padStart(3, '0')}-${run?.current?.game ?? run?.upcoming ?? 'home'}.png`),
+			fullPage: true,
+		});
 		const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 		if (overflow > 1) fail(`page is ${overflow}px wider than the screen (${key})`);
 	}

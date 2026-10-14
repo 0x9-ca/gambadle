@@ -238,6 +238,8 @@ function defaultWagerFor(game: GameId): Wager {
 			return { game: 'megaslots' };
 		case 'videopoker':
 			return { game: 'videopoker' };
+		case 'craps':
+			return { game: 'craps', bet: { side: 'pass' } };
 	}
 }
 
@@ -1717,11 +1719,12 @@ describe('three card poker', () => {
 // ---------------------------------------------------------------------------
 
 describe('the game interface', () => {
-	it('registers all eleven games under distinct ids and titles', () => {
+	it('registers all twelve games under distinct ids and titles', () => {
 		expect(GAMES.map((g) => g.id).sort()).toEqual([
 			'baccarat',
 			'blackjack',
 			'coinflip',
+			'craps',
 			'dice',
 			'megaslots',
 			'paigow',
