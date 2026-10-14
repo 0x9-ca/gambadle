@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { STARTING_CHIPS, TOTAL_ROUNDS, type RunState } from '../../shared/protocol';
 import { formatChips, formatDelta, roundsOf, SHORT_TITLE, shareText } from '../lib/format';
 import { loadName } from '../lib/savedName';
+import { Daily } from './Daily';
 import { Leaderboard } from './Leaderboard';
 
 // ---------------------------------------------------------------------------
@@ -79,6 +80,7 @@ export function NameEntry({
 	return (
 		<>
 			<Summary run={run} />
+			<Daily />
 
 			<form
 				className="panel panel--table"
@@ -229,6 +231,7 @@ export function Submitted({ run, onRestart }: { run: RunState; onRestart: () => 
 	return (
 		<>
 			<Summary run={run} />
+			<Daily />
 			<Leaderboard highlight="submitted" />
 			<button type="button" className="btn btn--block" onClick={onRestart}>
 				Play again

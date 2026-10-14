@@ -13,7 +13,7 @@ Use this file as the working contract for any coding agent.
 - **DB:** D1 (`env.DB`)
 - **Frontend:** React + Vite + TypeScript (`src/`)
 - **Server game logic:** `worker/` (authoritative; client is display-only)
-- **Games:** blackjack (with the TriLux side bet), roulette, baccarat, coinflip, dice, slots, three card poker, Ultimate Texas Hold'em, Pai Gow Poker, Mega Slots (5×5, 40 lines, ~92% RTP; math in shared/megaslots.ts)
+- **Games:** blackjack (with the TriLux side bet), roulette, baccarat, coinflip, dice, slots, three card poker, Ultimate Texas Hold'em, Pai Gow Poker, Mega Slots (5×5, 40 lines, ~92% RTP; math in shared/megaslots.ts), Video Poker (8/5 Jacks or Better, 97.30%), Craps (pass/don't pass, free odds, Field)
 
 Core invariant: **all outcomes and chip movements are server-side only**.
 
@@ -28,6 +28,7 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - `worker/time.ts` — ET day logic and reset countdown
 - `worker/db.ts` — D1 persistence
 - `worker/stats.ts` — personal stats, summarized from `run_results` (one row per finished run, per session)
+- `worker/daily.ts` — `GET /api/daily`: today's ranked runs compared (everyone ranked gets the same games and outcomes); aggregates only, never another player's run
 - `shared/protocol.ts` — shared API/game types and run model
 - `shared/games.ts` — shared constants/paytables/ranges
 - `src/components/*` — rendering only; must not invent game state
@@ -82,6 +83,13 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - Pair Plus settles independently.
 
 ---
+
+### Craps
+- Multi-roll, but every roll is dealt in `init` (`CRAPS_MAX_ROLLS`), because each action runs under the *same* seeded generator: rolling inside `apply` would deal the identical roll every time. The view only ever shows the rolls taken so far.
+- `stake` = line bet + odds + Field. The stack must cover the most odds could add at deal time (`CRAPS_MAX_ODDS`), so an all-in round bets a third of the stack. Odds profit rounds down to whole chips; `test/craps.test.ts` computes the house edge exactly (1.41% pass, 1.36% don't pass, odds add none).
+
+### Video Poker
+- 8/5 Jacks or Better. The whole deck is shuffled in `init` and replacements are the next cards in order, so the hold choice never changes what is dealt. `VP_PAYS` are total returns (a pair of jacks returns the bet). `test/videopoker.test.ts` enumerates every hand and hold (about 27 s) and must land on the published 97.30%.
 
 ### Daily seed (ranked runs)
 - A session's first run of the day is ranked and carries `run.seed` (the ET day); every ranked player gets the same games and outcomes. Unranked runs have no seed and use the CSPRNG.

@@ -5,7 +5,7 @@
  * gameplay state of its own.
  */
 
-import type { Action, ApiError, LeaderboardView, RunView, StatsView } from '../../shared/protocol';
+import type { Action, ApiError, DailyView, LeaderboardView, RunView, StatsView } from '../../shared/protocol';
 
 export class ApiRequestError extends Error {
 	readonly code: ApiError['code'];
@@ -60,4 +60,8 @@ export function fetchLeaderboard(scope: 'today' | 'alltime'): Promise<Leaderboar
 }
 export function fetchStats(): Promise<StatsView> {
 	return request<StatsView>('/api/stats');
+}
+
+export function fetchDaily(): Promise<DailyView> {
+	return request<DailyView>('/api/daily');
 }

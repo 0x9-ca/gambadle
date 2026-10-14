@@ -41,8 +41,8 @@ describe('roundRecords', () => {
 			history: [entry(1, 'dice', 50), entry(1, 'dice', 100, true), entry(1, 'dice', -200, true), entry(2, 'slots', -10)],
 		};
 		expect(roundRecords(run)).toEqual([
-			{ game: 'dice', net: -50, doubles: 2 },
-			{ game: 'slots', net: -10, doubles: 0 },
+			{ game: 'dice', net: -50, doubles: 2, bet: 10 },
+			{ game: 'slots', net: -10, doubles: 0, bet: 10 },
 		]);
 	});
 });

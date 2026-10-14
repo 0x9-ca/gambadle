@@ -28,8 +28,8 @@ const out = join(root, 'test', 'e2e', 'output');
 const PORT = 5298;
 const BASE = `http://localhost:${PORT}`;
 const MAX_RUNS = 25;
-/** How long a screen may offer nothing to press (a reveal plays out first). */
-const STUCK_MS = 9000;
+/** How long a screen may offer nothing to press: a reveal plays out first, and a Mega Slots free-spin round takes about 13 seconds. */
+const STUCK_MS = 16_000;
 const GAMES = ['blackjack', 'roulette', 'baccarat', 'coinflip', 'dice', 'slots', 'threecard', 'ultimate', 'paigow', 'megaslots', 'videopoker', 'craps'];
 
 const failures = [];
@@ -118,6 +118,8 @@ const PRIORITY = [
 ];
 
 const seenGames = new Set();
+// The daily comparison should show on a ranked run's end screen (the first run of the session).
+let sawDaily = false;
 const seenScreens = new Set();
 let shots = 0;
 let runsStarted = 0;
@@ -165,6 +167,12 @@ while (runsStarted <= MAX_RUNS && seenGames.size < GAMES.length) {
 		if (overflow > 1) fail(`page is ${overflow}px wider than the screen (${key})`);
 	}
 
+	// Looked for after the screen has settled: the panel loads on its own.
+	if (!sawDaily && (await page.locator('.daily').count()) > 0) {
+		sawDaily = true;
+		await page.locator('.daily').screenshot({ path: join(out, 'daily.png') });
+	}
+
 	const label = texts[index];
 	if (label.startsWith('Start a') || label.startsWith('Play again')) runsStarted++;
 	await buttons.nth(index).click();
@@ -182,6 +190,10 @@ if ((await page.locator('.stats').count()) === 0) {
 	if ((await page.locator('.stats__games tbody tr').count()) === 0) fail('stats panel lists no games');
 	await page.locator('.stats').screenshot({ path: join(out, 'stats.png') });
 }
+
+if (!sawDaily) fail('the daily comparison never showed on a ranked run\'s end screen');
+const daily = await page.evaluate(() => fetch('/api/daily').then((r) => r.json()));
+if (!daily.you || daily.rounds.length === 0) fail(`/api/daily had no ranked run for this player: ${JSON.stringify(daily)}`);
 
 for (const game of GAMES) {
 	if (!seenGames.has(game)) fail(`${game} never came up in ${MAX_RUNS} runs`);

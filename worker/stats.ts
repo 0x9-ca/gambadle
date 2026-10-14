@@ -11,6 +11,8 @@ export interface RoundRecord {
 	game: GameId;
 	net: number;
 	doubles: number;
+	/** The opening bet of the round. Absent on runs recorded before it was kept. */
+	bet?: number;
 }
 
 export interface ResultRow {
@@ -31,10 +33,10 @@ export function roundRecords(run: RunState): RoundRecord[] {
 			last.net += entry.net;
 			last.doubles += 1;
 		} else {
-			rounds.push({ round: entry.round, game: entry.game, net: entry.net, doubles: 0 });
+			rounds.push({ round: entry.round, game: entry.game, net: entry.net, doubles: 0, bet: entry.bet });
 		}
 	}
-	return rounds.map(({ game, net, doubles }) => ({ game, net, doubles }));
+	return rounds.map(({ game, net, doubles, bet }) => ({ game, net, doubles, bet }));
 }
 
 /** The ET day before `day` ('2026-03-01' -> '2026-02-28'). */

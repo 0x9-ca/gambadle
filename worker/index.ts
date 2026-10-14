@@ -15,6 +15,7 @@
 import {
 	type Action,
 	type ApiError,
+	type DailyView,
 	type LeaderboardView,
 	type RunState,
 	type RunView,
@@ -22,6 +23,7 @@ import {
 } from '../shared/protocol';
 import {
 	deleteRun,
+	getDailyResults,
 	getLeaderboard,
 	getRun,
 	getRunResults,
@@ -33,6 +35,7 @@ import {
 	submitScore,
 } from './db';
 import { applyAction, publicRun, totalWagered } from './engine';
+import { summarizeDaily } from './daily';
 import { roundRecords, summarizeStats } from './stats';
 import { GameError } from './games/types';
 import {
@@ -70,6 +73,8 @@ export default {
 				return handleLeaderboard(request, env);
 			case '/api/stats':
 				return handleStats(request, env);
+			case '/api/daily':
+				return handleDaily(request, env);
 			default:
 				// Static assets are served before the Worker sees them, so anything
 				// arriving here is either a stray API path or a client-side route
@@ -384,6 +389,17 @@ async function handleStats(request: Request, env: Env): Promise<Response> {
 	const sessionId = await readSession(request, env.SESSION_SECRET);
 	const rows = sessionId ? await getRunResults(env.DB, sessionId) : [];
 	return json(summarizeStats(rows, etDay()) satisfies StatsView);
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/daily
+// ---------------------------------------------------------------------------
+
+async function handleDaily(request: Request, env: Env): Promise<Response> {
+	const sessionId = await readSession(request, env.SESSION_SECRET);
+	const day = etDay();
+	const rows = await getDailyResults(env.DB, day);
+	return json(summarizeDaily(rows, sessionId, day) satisfies DailyView);
 }
 
 // ---------------------------------------------------------------------------

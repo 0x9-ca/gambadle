@@ -545,6 +545,35 @@ export interface StatsView {
 	games: { game: GameId; played: number; won: number; net: number }[];
 }
 
+/**
+ * Today's ranked players against each other. Every ranked run gets the same
+ * games and the same outcomes, so a round can be compared directly: how many
+ * won it, what the field made on its stake, and what this player did.
+ */
+export interface DailyView {
+	day: string;
+	/** Ranked runs finished today, this player's included. */
+	players: number;
+	/** This player's ranked run today, or null if they have none finished. */
+	you: {
+		chips: number;
+		/** Share (0-1) of the other players this stack finished ahead of, ties half; null if alone. */
+		ahead: number | null;
+	} | null;
+	/** One entry per round this player played, in order; empty without a ranked run. */
+	rounds: {
+		round: number;
+		game: GameId;
+		/** Players who played this game in this round (this player included). */
+		players: number;
+		/** Share (0-1) of them who won it. */
+		winRate: number;
+		/** Their mean net per chip of bet, or null if none recorded a bet. */
+		avgReturn: number | null;
+		you: { net: number; won: boolean; /** Net per chip of bet, null for older records without a bet. */ ret: number | null };
+	}[];
+}
+
 export interface ApiError {
 	error: string;
 	code:

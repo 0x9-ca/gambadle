@@ -1186,6 +1186,41 @@ button:disabled {
 	color: var(--ink-dim);
 }
 
+/* How you did today: one row per round against the field. */
+.daily__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.85rem;
+}
+.daily__table caption {
+	caption-side: bottom;
+	text-align: left;
+	padding-top: 0.5rem;
+}
+.daily__table th,
+.daily__table td {
+	padding: 0.35rem 0.2rem;
+	border-top: 1px solid var(--line);
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.daily__table th:first-child {
+	text-align: left;
+	font-weight: 600;
+}
+.daily__table thead th {
+	border-top: 0;
+	color: var(--ink-faint);
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+.daily__table td:nth-child(2) {
+	font-family: var(--mono);
+	font-weight: 700;
+}
+
 /* Personal stats, folded away under their summary line. */
 .stats__summary {
 	display: flex;

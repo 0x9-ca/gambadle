@@ -8,6 +8,7 @@
  */
 
 import type { LeaderboardEntry, LeaderboardView, RunState } from '../shared/protocol';
+import type { DailyRow } from './daily';
 import type { ResultRow } from './stats';
 import { etDay } from './time';
 
@@ -72,6 +73,9 @@ export async function pruneStaleRuns(db: D1Database): Promise<number> {
 // Run results — personal stats
 // ---------------------------------------------------------------------------
 
+/** Ranked runs read for one day's comparison. */
+const DAILY_LIMIT = 5000;
+
 /** Most recent finished runs read for a player's stats. */
 const STATS_LIMIT = 1000;
 
@@ -86,6 +90,18 @@ export async function recordRunResult(
 		)
 		.bind(row.sessionId, row.day, row.ranked ? 1 : 0, row.chips, row.bust ? 1 : 0, JSON.stringify(row.rounds), Date.now())
 		.run();
+}
+
+/** Every ranked run finished on `day`, for the daily comparison. */
+export async function getDailyResults(db: D1Database, day: string): Promise<DailyRow[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT session_id, chips, rounds FROM run_results
+			 WHERE day = ?1 AND ranked = 1 ORDER BY finished_at LIMIT ?2`
+		)
+		.bind(day, DAILY_LIMIT)
+		.all<DailyRow>();
+	return results;
 }
 
 export async function getRunResults(db: D1Database, sessionId: string): Promise<ResultRow[]> {
