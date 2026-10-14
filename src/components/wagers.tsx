@@ -32,6 +32,7 @@ import {
 import { useState } from 'react';
 import type { GameId, RouletteBet, RouletteChip, Wager } from '../../shared/protocol';
 import { formatChips } from '../lib/format';
+import { lastSpread } from '../lib/lastWager';
 import { NumberField } from './NumberField';
 
 interface Props {
@@ -103,6 +104,8 @@ function RoulettePicker({
 	onChange: (w: Wager) => void;
 }) {
 	const [chipSize, setChipSize] = useState(Math.min(10, limit));
+	// Read once: the spread from the last roulette round, scaled to this limit.
+	const [rebet] = useState(() => lastSpread(limit));
 	if (wager.game !== 'roulette') return null;
 	const chips = wager.bets;
 	const total = chips.reduce((sum, c) => sum + c.amount, 0);
@@ -253,6 +256,18 @@ function RoulettePicker({
 					);
 				})}
 			</div>
+
+			{chips.length === 0 && rebet ? (
+				<button
+					type="button"
+					className="btn btn--block"
+					style={{ marginTop: '0.9rem' }}
+					onClick={() => set(rebet)}
+				>
+					Rebet last spread ({formatChips(rebet.reduce((sum, c) => sum + c.amount, 0))} on{' '}
+					{rebet.length} {rebet.length === 1 ? 'spot' : 'spots'})
+				</button>
+			) : null}
 
 			{chips.length > 0 ? (
 				<div className="log" style={{ marginTop: '0.9rem' }}>

@@ -14,6 +14,7 @@ import {
 	type Wager,
 } from '../../shared/protocol';
 import { formatChips, formatDelta } from '../lib/format';
+import { restoreWager, saveWager } from '../lib/lastWager';
 import { revealSeconds } from '../lib/reveal';
 import { GameBoard } from './boards';
 import { NumberField } from './NumberField';
@@ -68,7 +69,7 @@ export function BetScreen({
 				</>
 			) : (
 				<>
-			<p className="panel__sub">How much are you putting out?</p>
+			<p className="panel__sub">{ANTE_NOTE[run.upcoming ?? ''] ?? 'How much are you putting out?'}</p>
 
 			<div className="bet-input">
 				<button type="button" onClick={() => step(-stepSize(bet))} disabled={busy || bet <= MIN_BET} aria-label="Decrease bet">
@@ -108,7 +109,7 @@ export function BetScreen({
 				disabled={busy || bet < MIN_BET || bet > max}
 				onClick={() => onBegin(bet)}
 			>
-				Place {formatChips(bet)} chips
+				{run.upcoming && ANTE_NOTE[run.upcoming] ? 'Ante' : 'Place'} {formatChips(bet)} chips
 			</button>
 
 				</>
@@ -122,6 +123,17 @@ export function BetScreen({
 		</div>
 	);
 }
+
+/**
+ * In the poker games the bet is only the ante: more goes out with it, and the
+ * engine caps an all-in so the rest can be covered. Said up front, here,
+ * rather than discovered on the wager screen.
+ */
+const ANTE_NOTE: Partial<Record<string, string>> = {
+	threecard: 'Your bet is the ante. Playing the hand adds an equal Play bet, so up to twice it is at risk (all in antes half your stack).',
+	ultimate:
+		"Your bet is the ante. A matching Blind goes out with it and you can raise up to 4x, so up to six times it is at risk (all in antes a sixth of your stack).",
+};
 
 /** Betting increments that feel good on a stack of a few thousand. */
 function stepSize(bet: number): number {
@@ -150,10 +162,18 @@ export function ChoosingScreen({
 	busy: boolean;
 	onConfirm: (wager: Wager) => void;
 }) {
-	// Roulette is spread over spots by the player, so it starts with nothing placed.
-	const [wager, setWager] = useState<Wager>(
-		seedWager.game === 'roulette' ? { game: 'roulette', bets: [] } : seedWager
+	// Roulette is spread over spots by the player, so it starts with nothing
+	// placed (its picker offers the last spread). Other games start from the
+	// last wager made on them, refitted to this bet and stack.
+	const [wager, setWager] = useState<Wager>(() =>
+		seedWager.game === 'roulette'
+			? { game: 'roulette', bets: [] }
+			: (restoreWager(game, bet, stack) ?? seedWager)
 	);
+	const confirm = (chosen: Wager) => {
+		saveWager(chosen);
+		onConfirm(chosen);
+	};
 	const hasChoice = !GAMES_WITHOUT_WAGER_CHOICE.includes(game);
 	const autoConfirmed = useRef(false);
 
@@ -188,7 +208,7 @@ export function ChoosingScreen({
 						className="btn btn--primary btn--block"
 						style={{ marginTop: '1rem' }}
 						disabled={busy || (wager.game === 'roulette' && wager.bets.length === 0)}
-						onClick={() => onConfirm(wager)}
+						onClick={() => confirm(wager)}
 					>
 						{wager.game === 'roulette'
 							? `Spin with ${formatChips(wager.bets.reduce((sum, c) => sum + c.amount, 0))} placed`
