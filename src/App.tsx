@@ -21,7 +21,7 @@ import { DoubleOrNothing, NameEntry, RoundLog, Submitted, UnrankedEnd } from './
 import { Leaderboard } from './components/Leaderboard';
 import { BetScreen, ChoosingScreen, ResultPanel } from './components/screens';
 import { ApiRequestError, fetchState, sendAction } from './lib/api';
-import { formatChips, formatCountdown } from './lib/format';
+import { formatChips, formatCountdown, formatDay } from './lib/format';
 import { revealSeconds } from './lib/reveal';
 import { saveName } from './lib/savedName';
 
@@ -310,13 +310,6 @@ function NameEntryHost({ run, busy, act }: { run: RunState; busy: boolean; act: 
 }
 
 // ---------------------------------------------------------------------------
-
-/** "2026-10-14" as "Oct 14". */
-function formatDay(day: string): string {
-	const [y, m, d] = day.split('-').map(Number);
-	if (!y || !m || !d) return day;
-	return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-}
 
 /**
  * The run as the header and round log should show it.

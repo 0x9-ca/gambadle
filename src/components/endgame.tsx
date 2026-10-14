@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { STARTING_CHIPS, TOTAL_ROUNDS, type RunState } from '../../shared/protocol';
-import { formatChips, formatDelta, resultSquares } from '../lib/format';
+import { formatChips, formatDelta, roundsOf, SHORT_TITLE, shareText } from '../lib/format';
 import { loadName } from '../lib/savedName';
 import { Leaderboard } from './Leaderboard';
 
@@ -156,15 +156,12 @@ export function UnrankedEnd({
 // Summary
 // ---------------------------------------------------------------------------
 
-/** Copies (or natively shares) the run as emoji squares plus a link to the game. */
+/** Copies (or natively shares) the run, one line per round, plus a link to the game. */
 function ShareButton({ run }: { run: RunState }) {
 	const [label, setLabel] = useState('Share results');
 
 	const share = async () => {
-		const text =
-			`Gambadle${run.seed ? ` ${run.seed}` : ''} — ${formatChips(run.chips)} chips\n` +
-			`${resultSquares(run.history)}\n` +
-			window.location.origin;
+		const text = shareText(run, window.location.origin);
 		try {
 			if (navigator.share) {
 				await navigator.share({ text });
@@ -204,9 +201,21 @@ export function Summary({ run }: { run: RunState }) {
 				{formatDelta(net)} against a {formatChips(STARTING_CHIPS)} start, across {rounds} round
 				{rounds === 1 ? '' : 's'}.
 			</p>
-			<p style={{ margin: '0.4rem 0', fontSize: '1.4rem', letterSpacing: '0.1em' }}>
-				{resultSquares(run.history)}
-			</p>
+			{/* The share card as it will read: one row per round. */}
+			<ol className="share-card">
+				{roundsOf(run.history).map((r) => (
+					<li key={r.round} className="share-card__row">
+						<span className={`share-card__square share-card__square--${r.net > 0 ? 'win' : r.net < 0 ? 'loss' : 'push'}`} />
+						<span className="share-card__game">
+							{SHORT_TITLE[r.game]}
+							{r.doubles > 0 ? <span className="log__doubled">×{r.doubles + 1}</span> : null}
+						</span>
+						<span className={`share-card__net delta--${r.net > 0 ? 'win' : r.net < 0 ? 'loss' : 'push'}`}>
+							{formatDelta(r.net)}
+						</span>
+					</li>
+				))}
+			</ol>
 			<ShareButton run={run} />
 		</div>
 	);
