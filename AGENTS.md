@@ -13,7 +13,7 @@ Use this file as the working contract for any coding agent.
 - **DB:** D1 (`env.DB`)
 - **Frontend:** React + Vite + TypeScript (`src/`)
 - **Server game logic:** `worker/` (authoritative; client is display-only)
-- **Games:** blackjack, roulette, baccarat, coinflip, dice, slots, three card poker
+- **Games:** blackjack (with the TriLux side bet), roulette, baccarat, coinflip, dice, slots, three card poker, Ultimate Texas Hold'em, Pai Gow Poker
 
 Core invariant: **all outcomes and chip movements are server-side only**.
 
@@ -27,6 +27,7 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - `worker/session.ts` — signed session cookie handling (`gambadle_sid`)
 - `worker/time.ts` — ET day logic and reset countdown
 - `worker/db.ts` — D1 persistence
+- `worker/stats.ts` — personal stats, summarized from `run_results` (one row per finished run, per session)
 - `shared/protocol.ts` — shared API/game types and run model
 - `shared/games.ts` — shared constants/paytables/ranges
 - `src/components/*` — rendering only; must not invent game state
@@ -108,8 +109,13 @@ npx tsc -b
 # tests
 npx vitest run
 
-# deploy
-npx wrangler deploy
+# browser smoke test: plays whole runs at phone size until every game has
+# come up; fails on page errors, stuck screens or sideways overflow
+# (screenshots in test/e2e/output; set CHROMIUM_PATH if needed)
+npm run test:e2e
+
+# deploy (typecheck, tests, build, D1 migrations, deploy)
+./deploy.sh
 ```
 
 If modifying game math/state transitions, run full tests, not a subset.
