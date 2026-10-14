@@ -7,9 +7,10 @@
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { colorOf, SLOT_GLYPH, SLOT_LINES, SLOT_SYMBOLS } from '../../shared/games';
+import { colorOf, SLOT_LINES, SLOT_SYMBOLS } from '../../shared/games';
 import type { Action, CardView, GameId, GameView, HandView, PaiGowSplit } from '../../shared/protocol';
 import { Hand, PlayingCard } from './PlayingCard';
+import { SlotIcon } from './SlotIcon';
 import { SlotsPaytable } from './wagers';
 
 interface BoardProps {
@@ -478,7 +479,7 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 								const isWin = view.resolved && done && view.lines.includes(rowIndex);
 								return (
 									<div key={rowIndex} className={`reel__cell${isWin ? ' reel__cell--win' : ''}`}>
-										{SLOT_GLYPH[symbol]}
+										<SlotIcon symbol={symbol} size="2.1rem" />
 									</div>
 								);
 							})}

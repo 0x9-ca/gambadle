@@ -803,6 +803,20 @@ button:disabled {
 	position: relative;
 }
 
+/* Paytable rows lead with the drawn symbol. */
+.paytable__list li > span:first-child {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	text-transform: capitalize;
+}
+
+.slot-icon {
+	display: block;
+	flex: none;
+	filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.5));
+}
+
 .reel__cell--win {
 	background: rgb(227 178 60 / 0.18);
 	box-shadow: inset 0 0 0 1px var(--brass);

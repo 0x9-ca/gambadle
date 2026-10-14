@@ -15,7 +15,6 @@ import {
 	ROULETTE_MAX,
 	SLOT_PAYTABLE,
 	SLOT_SYMBOLS,
-	SLOT_GLYPH,
 	TCP_ANTE_BONUS,
 	TCP_PAIR_PLUS,
 	TCP_RANKS,
@@ -34,6 +33,7 @@ import type { GameId, RouletteBet, RouletteChip, Wager } from '../../shared/prot
 import { formatChips } from '../lib/format';
 import { lastSpread } from '../lib/lastWager';
 import { NumberField } from './NumberField';
+import { SlotIcon } from './SlotIcon';
 
 interface Props {
 	game: GameId;
@@ -714,7 +714,7 @@ export function SlotsPaytable() {
 				{rows.map((symbol) => (
 					<li key={symbol}>
 						<span>
-							{SLOT_GLYPH[symbol]} {symbol}
+							<SlotIcon symbol={symbol} size="1.3rem" /> {symbol}
 						</span>
 						{/* The table holds return multiples; the odds people quote are profit. */}
 						<span className="faint">{SLOT_PAYTABLE[symbol] - 1}:1</span>

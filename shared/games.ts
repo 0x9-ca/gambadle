@@ -93,21 +93,6 @@ export const SLOT_SYMBOLS = [
 ] as const;
 export type SlotSymbol = (typeof SLOT_SYMBOLS)[number];
 
-export const SLOT_GLYPH: Record<SlotSymbol, string> = {
-	cherry: '🍒',
-	lemon: '🍋',
-	bell: '🔔',
-	clover: '🍀',
-	star: '⭐',
-	diamond: '💎',
-	melon: '🍉',
-	grape: '🍇',
-	gift: '🎁',
-	coin: '🪙',
-	crown: '👑',
-	seven: '7️⃣',
-};
-
 export const SLOT_STOPS_PER_REEL = 20;
 
 /**
