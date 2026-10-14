@@ -36,7 +36,12 @@ export function CrapsBoard({
 	const tumbling = (busy && rollSent) || settling;
 	const tick = useTick(tumbling, 80);
 
-	const last = view.rolls[view.rolls.length - 1];
+	// While the result board's dice are still tumbling, the table is shown as it
+	// stood before the last roll: that roll's total, its place in the history, the
+	// Field result and the caption would all give the outcome away.
+	const rolls = settling ? view.rolls.slice(0, -1) : view.rolls;
+	const last = rolls[rolls.length - 1];
+	const fieldWon = settling ? null : (view.field?.won ?? null);
 	const faces: [number, number] = tumbling ? [(tick * 5) % 6 + 1, (tick * 3 + 2) % 6 + 1] : (last?.dice ?? [5, 5]);
 	const pass = view.side === 'pass';
 	const settled = view.resolved && !settling;
@@ -79,9 +84,9 @@ export function CrapsBoard({
 					)}
 				</p>
 
-				{view.rolls.length > 1 ? (
+				{rolls.length > 1 ? (
 					<ol className="craps__history" aria-label="Rolls so far">
-						{view.rolls.map((r, i) => (
+						{rolls.map((r, i) => (
 							<li
 								key={i}
 								// The come-out roll only sets the point; colour comes from the rolls after it.
@@ -101,9 +106,9 @@ export function CrapsBoard({
 				{view.field ? (
 					<p className="craps__odds">
 						Field <strong>{view.field.bet}</strong>
-						{view.field.won === null
+						{fieldWon === null
 							? ' · decided by the first roll'
-							: view.field.won
+							: fieldWon
 								? ` · won ${view.field.pays}:1`
 								: ' · lost'}
 					</p>

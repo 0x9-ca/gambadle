@@ -21,7 +21,8 @@ const REVEAL_SECONDS: Record<GameId, number> = {
 	paigow: 0.8,
 	megaslots: BASE_DONE / 1000,
 	videopoker: 1.2,
-	craps: 1.1,
+	// The dice tumble for 0.9s and then settle for about 0.35s.
+	craps: 1.3,
 };
 
 export function revealSeconds(result: RoundResult | null): number {
