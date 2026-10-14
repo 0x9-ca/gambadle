@@ -239,6 +239,8 @@ export type GameView = GameViewBase &
 				outcome: 'player' | 'banker' | 'tie';
 				playerPair: boolean;
 				bankerPair: boolean;
+				/** True when the coup was settled by the deal itself, with no Deal step to press. */
+				opening: boolean;
 		  }
 		| { game: 'coinflip'; result: 'heads' | 'tails'; won: boolean }
 		| { game: 'dice'; roll: number; dice: number[]; won: boolean }

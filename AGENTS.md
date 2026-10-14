@@ -62,6 +62,7 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - Player/Banker bets **push on tie**.
 - Banker draw table must match punto banco rules.
 - Either Pair odds are intentionally `5:1`.
+- A coup with nothing left to decide (a natural, or both hands standing on 6/7) settles inside `init`, with no `DEAL` step; the view's `opening` flag tells the board to deal all four cards in. Any other coup waits for `DEAL`.
 
 ### Blackjack
 - Dealer stands on all 17s.

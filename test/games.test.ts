@@ -1743,9 +1743,9 @@ describe('the game interface', () => {
 			const stack = handler.id === 'threecard' ? BET * 2 : HUGE_STACK;
 			const bet = handler.id === 'threecard' ? BET : BET;
 			let step = handler.init(handler.parseWager(wager, bet, stack), bet, stack);
-			// Blackjack alone can settle on the deal (a natural on either side), so
-			// deal again until a hand opens; it settles at once about one deal in twenty.
-			for (let i = 0; i < 50 && handler.id === 'blackjack' && step.outcome; i++) {
+			// Blackjack (a natural) and baccarat (a natural, or both hands standing)
+			// can settle on the deal itself, so deal again until a hand opens.
+			for (let i = 0; i < 50 && (handler.id === 'blackjack' || handler.id === 'baccarat') && step.outcome; i++) {
 				step = handler.init(handler.parseWager(wager, bet, stack), bet, stack);
 			}
 			expect(step.outcome).toBeNull();
@@ -1818,5 +1818,60 @@ describe('three card poker dealer reveal', () => {
 
 		const folded = handler.apply(handler.init(wager, BET, HUGE_STACK).state, { type: 'FOLD' });
 		expect(viewOf<V>(folded.view).dealer).toBeNull();
+	});
+});
+
+describe('baccarat deal step', () => {
+	const handler = gameById('baccarat');
+	const wager = { game: 'baccarat', bet: { main: 'player' } } as const;
+	type Opening = BaccaratView & { opening: boolean; resolved: boolean };
+
+	it('settles on the deal when there is a natural or both hands stand, and asks for Deal otherwise', () => {
+		let settled = 0;
+		let waiting = 0;
+		for (let i = 0; i < 3_000; i++) {
+			const step = handler.init(handler.parseWager(wager, BET, HUGE_STACK), BET, HUGE_STACK);
+			const v = viewOf<Opening>(step.view);
+			const p = v.player.total;
+			const b = v.banker.total;
+			const natural = p >= 8 || b >= 8;
+			const bothStand = p >= 6 && b >= 6;
+			if (natural || bothStand) {
+				settled++;
+				// No third card, no Deal button, and the result is already in.
+				expect(step.outcome).not.toBeNull();
+				expect(v.resolved).toBe(true);
+				expect(v.opening).toBe(true);
+				expect(v.player.cards).toHaveLength(2);
+				expect(v.banker.cards).toHaveLength(2);
+				expect(handler.legalActions(step.state)).toEqual([]);
+				expect(() => handler.apply(step.state, { type: 'DEAL' })).toThrow(GameError);
+			} else {
+				waiting++;
+				expect(step.outcome).toBeNull();
+				expect(v.resolved).toBe(false);
+				expect(handler.legalActions(step.state)).toEqual(['DEAL']);
+				// Pressing Deal still draws, and it is not an opening settle.
+				const done = handler.apply(step.state, { type: 'DEAL' });
+				expect(viewOf<Opening>(done.view).opening).toBe(false);
+				expect(done.outcome).not.toBeNull();
+			}
+		}
+		// Both paths are common (about 45% and 55% of coups), so neither is untested.
+		expect(settled).toBeGreaterThan(900);
+		expect(waiting).toBeGreaterThan(900);
+	});
+
+	it('pays a settled-on-the-deal coup the same as a dealt one', () => {
+		// Every settled coup returns a real outcome: the stake went on the table and is accounted for.
+		for (let i = 0; i < 500; i++) {
+			const step = handler.init(handler.parseWager(wager, BET, HUGE_STACK), BET, HUGE_STACK);
+			if (!step.outcome) continue;
+			expect(step.outcome.stake).toBe(BET);
+			const { outcome } = viewOf<BaccaratView>(step.view);
+			if (outcome === 'player') expect(step.outcome.returned).toBe(BET * 2);
+			else if (outcome === 'tie') expect(step.outcome.returned).toBe(BET); // player bets push on a tie
+			else expect(step.outcome.returned).toBe(0);
+		}
 	});
 });

@@ -291,9 +291,10 @@ function RouletteBoard({ view, busy, onAction, animate }: BoardOf<'roulette'>) {
 function BaccaratBoard({ view, busy, onAction, animate }: BoardOf<'baccarat'>) {
 	return (
 		<div className="board">
-			{/* The opening two cards were seen before Deal; only third cards are new. */}
-			<BoardRow label="Player" hand={view.player} still={animate ? 2 : undefined} />
-			<BoardRow label="Banker" hand={view.banker} still={animate ? 2 : undefined} />
+			{/* The opening two cards were seen before Deal; only third cards are new.
+			    When the deal settled the coup itself, nothing was seen yet, so deal them all. */}
+			<BoardRow label="Player" hand={view.player} still={animate && !view.opening ? 2 : undefined} />
+			<BoardRow label="Banker" hand={view.banker} still={animate && !view.opening ? 2 : undefined} />
 			{view.playerPair || view.bankerPair ? (
 				<Note>
 					{view.playerPair && view.bankerPair

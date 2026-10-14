@@ -11,6 +11,10 @@
  * exact enumeration of the shoe those prices come out at 1.24%, 1.06% and 14.4%
  * house edge, with 10.36% on the pair side bets — see BACCARAT_ODDS.
  *
+ * When the opening four cards leave nothing to decide (a natural on either side,
+ * or both hands standing on 6 or 7) the coup is settled by the deal itself and
+ * there is no Deal step. Otherwise the player presses Deal to see the third cards.
+ *
  * Player may take a main bet plus one optional pair side bet on the same deal,
  * sized independently of the main bet.
  */
@@ -33,6 +37,8 @@ interface BaccaratState {
 	playerPair: boolean;
 	bankerPair: boolean;
 	done: boolean;
+	/** Whether the player pressed Deal, as opposed to the deal settling the coup. Absent on older states. */
+	acted?: boolean;
 }
 
 /**
@@ -106,6 +112,18 @@ function shouldBankerDraw(
 	return false;
 }
 
+/**
+ * Whether a third card can still be drawn: not after a natural, and not when
+ * Player stands (6 or 7) and Banker stands with it, since Banker then follows
+ * Player's own rule. When this is false the opening four cards settle the coup.
+ */
+function hasDraw(player: readonly Card[], banker: readonly Card[]): boolean {
+	const playerTotal = handTotal(player);
+	const bankerTotal = handTotal(banker);
+	if (isNatural(playerTotal) || isNatural(bankerTotal)) return false;
+	return shouldPlayerDraw(playerTotal) || shouldBankerDraw(bankerTotal, false, null);
+}
+
 function validate(bet: BaccaratBet): BaccaratBet {
 	if (bet.main !== 'player' && bet.main !== 'banker' && bet.main !== 'tie') {
 		throw new GameError('invalid_wager', 'main bet must be player, banker or tie');
@@ -131,6 +149,7 @@ function view(s: BaccaratState): GameView {
 		outcome: playerTotal === bankerTotal ? 'tie' : playerTotal > bankerTotal ? 'player' : 'banker',
 		playerPair: s.playerPair,
 		bankerPair: s.bankerPair,
+		opening: s.done && !s.acted,
 	};
 }
 
@@ -181,6 +200,13 @@ export const baccarat: GameHandler = {
 		state.playerPair = state.player[0]!.rank === state.player[1]!.rank;
 		state.bankerPair = state.banker[0]!.rank === state.banker[1]!.rank;
 
+		// Nothing left to decide: settle now rather than ask for a pointless Deal.
+		// The cards drawn are the same either way, so the game is unchanged.
+		if (!hasDraw(state.player, state.banker)) {
+			state.done = true;
+			return settle(state);
+		}
+
 		return { state, view: view(state), outcome: null };
 	},
 
@@ -198,6 +224,7 @@ export const baccarat: GameHandler = {
 			throw new GameError('illegal_action', 'this hand is already dealt');
 		}
 		s.done = true;
+		s.acted = true;
 
 		// Third cards are drawn here rather than in init(), so the player sees
 		// the opening two and gets a beat before the hand resolves.
