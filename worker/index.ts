@@ -18,18 +18,22 @@ import {
 	type LeaderboardView,
 	type RunState,
 	type RunView,
+	type StatsView,
 } from '../shared/protocol';
 import {
 	deleteRun,
 	getLeaderboard,
 	getRun,
+	getRunResults,
 	pruneStaleRuns,
 	putRun,
+	recordRunResult,
 	recordRunStart,
 	startsToday,
 	submitScore,
 } from './db';
 import { applyAction, publicRun, totalWagered } from './engine';
+import { roundRecords, summarizeStats } from './stats';
 import { GameError } from './games/types';
 import {
 	newSessionId,
@@ -64,6 +68,8 @@ export default {
 				return handleAction(request, env);
 			case '/api/leaderboard':
 				return handleLeaderboard(request, env);
+			case '/api/stats':
+				return handleStats(request, env);
 			default:
 				// Static assets are served before the Worker sees them, so anything
 				// arriving here is either a stray API path or a client-side route
@@ -210,6 +216,24 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 
 	await putRun(env.DB, { id, day: etDay(), phase: next.phase, state: next, name: null });
 
+	// The run just ended (busted or survived): it counts toward the player's
+	// stats exactly once, whether or not a name is ever submitted.
+	// Stats are a nicety: failing to record one must not fail the action.
+	if (next.phase === 'finished' && existing?.phase !== 'finished') {
+		try {
+			await recordRunResult(env.DB, {
+				sessionId: id,
+				day: etDay(),
+				ranked: next.eligible !== false,
+				chips: next.chips,
+				bust: next.endedBy === 'bust',
+				rounds: roundRecords(next),
+			});
+		} catch (error) {
+			console.error(JSON.stringify({ message: 'failed to record run result', error: String(error) }));
+		}
+	}
+
 	return json(
 		{
 			...viewOf(next, null),
@@ -350,6 +374,16 @@ async function handleLeaderboard(request: Request, env: Env): Promise<Response> 
 
 	const view: LeaderboardView = await getLeaderboard(env.DB, scope, row?.name ?? null);
 	return json(view);
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/stats
+// ---------------------------------------------------------------------------
+
+async function handleStats(request: Request, env: Env): Promise<Response> {
+	const sessionId = await readSession(request, env.SESSION_SECRET);
+	const rows = sessionId ? await getRunResults(env.DB, sessionId) : [];
+	return json(summarizeStats(rows, etDay()) satisfies StatsView);
 }
 
 // ---------------------------------------------------------------------------

@@ -465,6 +465,21 @@ export interface LeaderboardView {
 	you: LeaderboardEntry | null;
 }
 
+/** A player's own record across every run they have finished. */
+export interface StatsView {
+	runs: number;
+	busts: number;
+	best: { chips: number; day: string } | null;
+	/** Average finishing stack, or null before any run is finished. */
+	average: number | null;
+	/** Chips won or lost in total against a fresh stack each run. */
+	netTotal: number;
+	/** Consecutive ET days with a finished run, up to today or yesterday. */
+	streak: number;
+	/** Rounds played per game, best-known first by the game list's order. */
+	games: { game: GameId; played: number; won: number; net: number }[];
+}
+
 export interface ApiError {
 	error: string;
 	code:

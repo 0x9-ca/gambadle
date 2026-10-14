@@ -1186,6 +1186,81 @@ button:disabled {
 	color: var(--ink-dim);
 }
 
+/* Personal stats, folded away under their summary line. */
+.stats__summary {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 0.75rem;
+	cursor: pointer;
+	list-style: none;
+}
+.stats__summary::-webkit-details-marker {
+	display: none;
+}
+.stats__summary::after {
+	content: '▾';
+	color: var(--ink-faint);
+	transition: transform 150ms ease;
+}
+.stats[open] .stats__summary::after {
+	transform: rotate(180deg);
+}
+.stats__summary .panel__title {
+	margin: 0;
+	flex: 1;
+}
+.stats__tiles {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 0.4rem;
+	margin-top: 0.8rem;
+}
+.stats__tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 0.5rem 0.25rem;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	text-align: center;
+}
+.stats__value {
+	font-family: var(--mono);
+	font-weight: 700;
+	font-size: 1.05rem;
+	color: var(--brass);
+	font-variant-numeric: tabular-nums;
+}
+.stats__games {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.85rem;
+}
+.stats__games th,
+.stats__games td {
+	padding: 0.3rem 0.2rem;
+	border-top: 1px solid var(--line);
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+.stats__games th:first-child {
+	text-align: left;
+	font-weight: 600;
+}
+.stats__games thead th {
+	border-top: 0;
+	color: var(--ink-faint);
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+.stats__games td:last-child {
+	font-family: var(--mono);
+	font-weight: 700;
+}
+
 /* --------------------------------------------------------------------- */
 /* Leaderboard                                                            */
 /* --------------------------------------------------------------------- */

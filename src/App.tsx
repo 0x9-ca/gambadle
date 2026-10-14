@@ -19,6 +19,7 @@ import {
 import { GameBoard } from './components/boards';
 import { DoubleOrNothing, NameEntry, RoundLog, Submitted, UnrankedEnd } from './components/endgame';
 import { Leaderboard } from './components/Leaderboard';
+import { Stats } from './components/Stats';
 import { BetScreen, ChoosingScreen, ResultPanel } from './components/screens';
 import { ApiRequestError, fetchState, sendAction } from './lib/api';
 import { formatChips, formatCountdown, formatDay } from './lib/format';
@@ -136,6 +137,8 @@ export default function App() {
 					)}
 
 					{shown ? <RoundLog run={shown.run} /> : null}
+					{/* Refreshes when a run finishes, once its reveal has played out. */}
+					<Stats refreshKey={shown?.run.phase === 'finished' ? `done-${shown.run.history.length}` : 'live'} />
 					<Leaderboard />
 				</main>
 

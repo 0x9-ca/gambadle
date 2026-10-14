@@ -8,6 +8,7 @@
  */
 
 import type { LeaderboardEntry, LeaderboardView, RunState } from '../shared/protocol';
+import type { ResultRow } from './stats';
 import { etDay } from './time';
 
 /** Rows shown on either board. */
@@ -65,6 +66,37 @@ export async function pruneStaleRuns(db: D1Database): Promise<number> {
 		.bind(etDay())
 		.run();
 	return result.meta.changes ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// Run results — personal stats
+// ---------------------------------------------------------------------------
+
+/** Most recent finished runs read for a player's stats. */
+const STATS_LIMIT = 1000;
+
+export async function recordRunResult(
+	db: D1Database,
+	row: { sessionId: string; day: string; ranked: boolean; chips: number; bust: boolean; rounds: unknown }
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO run_results (session_id, day, ranked, chips, bust, rounds, finished_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+		)
+		.bind(row.sessionId, row.day, row.ranked ? 1 : 0, row.chips, row.bust ? 1 : 0, JSON.stringify(row.rounds), Date.now())
+		.run();
+}
+
+export async function getRunResults(db: D1Database, sessionId: string): Promise<ResultRow[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT day, ranked, chips, bust, rounds, finished_at FROM run_results
+			 WHERE session_id = ?1 ORDER BY finished_at DESC LIMIT ?2`
+		)
+		.bind(sessionId, STATS_LIMIT)
+		.all<ResultRow>();
+	return results;
 }
 
 // ---------------------------------------------------------------------------
