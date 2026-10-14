@@ -6,11 +6,13 @@
  * over comes from `view.resolved`, which the server sets — never inferred here.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { colorOf, SLOT_LINES, SLOT_SYMBOLS } from '../../shared/games';
 import type { Action, CardView, GameId, GameView, HandView, PaiGowSplit } from '../../shared/protocol';
+import { Actions, Die, Note, prefersReducedMotion, useRollOnMount, useTick } from './boardKit';
 import { Hand, PlayingCard } from './PlayingCard';
 import { MegaSlotsBoard } from './MegaSlots';
+import { VideoPokerBoard } from './VideoPoker';
 import { SlotIcon } from './SlotIcon';
 import { SlotsPaytable } from './wagers';
 
@@ -28,34 +30,6 @@ interface BoardProps {
 	stake?: number;
 }
 
-const prefersReducedMotion = (): boolean =>
-	typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-
-/** True for `ms` after mount when `enabled`, never under reduced motion. */
-function useRollOnMount(enabled: boolean, ms: number): boolean {
-	const [rolling, setRolling] = useState(() => enabled && !prefersReducedMotion());
-	useEffect(() => {
-		if (!rolling) return;
-		const timer = setTimeout(() => setRolling(false), ms);
-		return () => clearTimeout(timer);
-	}, []); // eslint-disable-line react-hooks/exhaustive-deps
-	return rolling;
-}
-
-/**
- * A counter that advances while `active`, to cycle placeholder faces. The
- * placeholders come from a fixed stride over it, not a random source: they are
- * decoration only and the real result is whatever the server sent.
- */
-function useTick(active: boolean, ms = 90): number {
-	const [tick, setTick] = useState(0);
-	useEffect(() => {
-		if (!active) return;
-		const timer = setInterval(() => setTick((t) => t + 1), ms);
-		return () => clearInterval(timer);
-	}, [active, ms]);
-	return tick;
-}
 
 /** A board narrowed to one game. */
 type BoardOf<G extends GameId> = BoardProps & { view: Extract<GameView, { game: G }> };
@@ -82,6 +56,8 @@ export function GameBoard(props: BoardProps & { view: GameView }) {
 			return <PaiGowBoard {...props} view={props.view} />;
 		case 'megaslots':
 			return <MegaSlotsBoard {...props} view={props.view} />;
+		case 'videopoker':
+			return <VideoPokerBoard {...props} view={props.view} />;
 	}
 }
 
@@ -129,17 +105,7 @@ function BoardRow({
 	);
 }
 
-function Actions({ children }: { children: ReactNode }) {
-	return <div className="btn-row">{children}</div>;
-}
 
-function Note({ children }: { children: ReactNode }) {
-	return (
-		<p className="faint" style={{ margin: 0 }}>
-			{children}
-		</p>
-	);
-}
 
 // ---------------------------------------------------------------------------
 // Blackjack
@@ -381,26 +347,6 @@ function CoinFlipBoard({ view, busy, onAction, animate }: BoardOf<'coinflip'>) {
 // ---------------------------------------------------------------------------
 // Dice
 // ---------------------------------------------------------------------------
-
-/** Pip positions on a 3×3 grid, numbered 0-8 left to right, top to bottom. */
-const PIPS: Record<number, number[]> = {
-	1: [4],
-	2: [2, 6],
-	3: [2, 4, 6],
-	4: [0, 2, 6, 8],
-	5: [0, 2, 4, 6, 8],
-	6: [0, 2, 3, 5, 6, 8],
-};
-
-function Die({ face, rolling, blank }: { face: number; rolling: boolean; blank?: boolean }) {
-	return (
-		<span className={`die${rolling ? ' die--rolling' : ''}${blank ? ' die--blank' : ''}`} role="img" aria-label={blank ? 'Die' : `Die showing ${face}`}>
-			{Array.from({ length: 9 }, (_, i) => (
-				<span key={i} className={PIPS[face]?.includes(i) ? 'die__pip' : 'die__slot'} />
-			))}
-		</span>
-	);
-}
 
 /** Class for a landed coin, so heads and tails read differently at a glance. */
 const settledSide = (settled: boolean, side: 'heads' | 'tails'): string => (settled ? ` coin--${side}` : '');

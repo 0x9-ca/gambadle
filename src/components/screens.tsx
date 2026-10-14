@@ -237,6 +237,7 @@ function titleFor(game: GameId): string {
 			ultimate: "Ultimate Texas Hold'em",
 			paigow: 'Pai Gow Poker',
 			megaslots: 'Mega Slots',
+			videopoker: 'Video Poker',
 		}[game]
 	);
 }

@@ -30,7 +30,7 @@ const BASE = `http://localhost:${PORT}`;
 const MAX_RUNS = 25;
 /** How long a screen may offer nothing to press (a reveal plays out first). */
 const STUCK_MS = 9000;
-const GAMES = ['blackjack', 'roulette', 'baccarat', 'coinflip', 'dice', 'slots', 'threecard', 'ultimate', 'paigow', 'megaslots'];
+const GAMES = ['blackjack', 'roulette', 'baccarat', 'coinflip', 'dice', 'slots', 'threecard', 'ultimate', 'paigow', 'megaslots', 'videopoker'];
 
 const failures = [];
 const fail = (message) => {
@@ -108,6 +108,7 @@ const PRIORITY = [
 	'Deal',
 	'Spin',
 	'Roll',
+	'Draw',
 	'Flip',
 	'Keep it',
 	'Start over instead',

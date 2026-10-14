@@ -17,6 +17,7 @@ import { roulette } from './roulette';
 import { ultimate } from './ultimate';
 import { paigow } from './paigow';
 import { megaslots } from './megaslots';
+import { videopoker } from './videopoker';
 
 export const GAMES: readonly GameHandler[] = [
 	blackjack,
@@ -29,6 +30,7 @@ export const GAMES: readonly GameHandler[] = [
 	ultimate,
 	paigow,
 	megaslots,
+	videopoker,
 ];
 
 const BY_ID = new Map<GameId, GameHandler>(GAMES.map((g) => [g.id, g]));

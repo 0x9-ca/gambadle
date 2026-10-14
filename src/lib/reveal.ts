@@ -20,6 +20,7 @@ const REVEAL_SECONDS: Record<GameId, number> = {
 	ultimate: 0.6,
 	paigow: 0.8,
 	megaslots: BASE_DONE / 1000,
+	videopoker: 1.2,
 };
 
 export function revealSeconds(result: RoundResult | null): number {

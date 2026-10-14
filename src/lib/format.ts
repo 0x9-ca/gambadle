@@ -49,6 +49,7 @@ export const SHORT_TITLE: Record<GameId, string> = {
 	ultimate: "Hold'em",
 	paigow: 'Pai Gow',
 	megaslots: 'Mega Slots',
+	videopoker: 'Video Poker',
 };
 
 export interface RoundSummary {

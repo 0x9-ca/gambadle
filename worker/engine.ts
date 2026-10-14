@@ -220,6 +220,8 @@ export function defaultWager(gameId: GameId, bet: number): Wager {
 			return { game: 'paigow' };
 		case 'megaslots':
 			return { game: 'megaslots' };
+		case 'videopoker':
+			return { game: 'videopoker' };
 	}
 }
 

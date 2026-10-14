@@ -21,6 +21,7 @@ export const GAME_IDS = [
 	'ultimate',
 	'paigow',
 	'megaslots',
+	'videopoker',
 ] as const;
 
 export type GameId = (typeof GAME_IDS)[number];
@@ -33,7 +34,7 @@ export const MIN_BET = 1;
  * Games with nothing to choose before playing — the stake is the whole wager.
  * The client confirms these immediately on entering `choosing`.
  */
-export const GAMES_WITHOUT_WAGER_CHOICE: readonly GameId[] = ['slots', 'paigow', 'megaslots'];
+export const GAMES_WITHOUT_WAGER_CHOICE: readonly GameId[] = ['slots', 'paigow', 'megaslots', 'videopoker'];
 
 /** Formats a payout ratio like `3:2` for display. */
 export function formatOdds(multiplier: number): string {
@@ -162,7 +163,8 @@ export type Wager =
 	| { game: 'threecard'; bet: ThreeCardBet }
 	| { game: 'ultimate'; bet: UltimateBet }
 	| { game: 'paigow' }
-	| { game: 'megaslots' };
+	| { game: 'megaslots' }
+	| { game: 'videopoker' };
 
 export type AnyGameState = unknown;
 
@@ -267,6 +269,18 @@ export type GameView = GameViewBase &
 				dealerRank: string | null;
 				dealerQualifies: boolean | null;
 				folded: boolean;
+		  }
+		| {
+				game: 'videopoker';
+				/** The five cards showing: as dealt, then as drawn. */
+				hand: HandView;
+				stage: 'deal' | 'draw';
+				/** Which positions were held on the draw; empty before it. */
+				held: number[];
+				/** The paying hand showing, if any: a key into VP_PAYS. */
+				kind: string | null;
+				/** Total return per chip staked for the final hand, 0 if it does not pay. */
+				pays: number;
 		  }
 		| {
 				game: 'megaslots';
@@ -439,6 +453,8 @@ export type Action =
 	| { type: 'BET_2X' }
 	| { type: 'BET_1X' }
 	| { type: 'HOUSE_WAY' }
+	/** Video poker: the positions (0-4) to keep; the rest are replaced. Omitted means keep none. */
+	| { type: 'DRAW'; hold: number[] }
 	/** Pai Gow: `low` names the two cards (indices into the dealt hand) for the low hand. */
 	| { type: 'SET_HAND'; low: number[] }
 	| { type: 'DON_ACCEPT' }

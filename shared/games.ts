@@ -317,3 +317,50 @@ export const BACCARAT_ODDS = {
 	bankerPair: 11,
 	eitherPair: 5,
 } as const;
+
+// ---------------------------------------------------------------------------
+// Video Poker — 8/5 Jacks or Better
+// ---------------------------------------------------------------------------
+
+export const VP_KINDS = [
+	'royal',
+	'straightflush',
+	'four',
+	'fullhouse',
+	'flush',
+	'straight',
+	'three',
+	'twopair',
+	'jacks',
+] as const;
+export type VpKind = (typeof VP_KINDS)[number];
+
+export const VP_LABEL: Record<VpKind, string> = {
+	royal: 'Royal Flush',
+	straightflush: 'Straight Flush',
+	four: 'Four of a Kind',
+	fullhouse: 'Full House',
+	flush: 'Flush',
+	straight: 'Straight',
+	three: 'Three of a Kind',
+	twopair: 'Two Pair',
+	jacks: 'Jacks or Better',
+};
+
+/**
+ * Total return per chip staked, stake included, so a pair of jacks or better
+ * gives the bet back. This is the 8/5 table (full house 8, flush 5) with an
+ * 800 royal on every bet: 97.30% under the best play, a published figure that
+ * test/videopoker.test.ts reproduces by enumerating every hand and every hold.
+ */
+export const VP_PAYS: Record<VpKind, number> = {
+	royal: 800,
+	straightflush: 50,
+	four: 25,
+	fullhouse: 8,
+	flush: 5,
+	straight: 4,
+	three: 3,
+	twopair: 2,
+	jacks: 1,
+};
