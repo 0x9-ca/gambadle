@@ -20,6 +20,7 @@ export const GAME_IDS = [
 	'threecard',
 	'ultimate',
 	'paigow',
+	'megaslots',
 ] as const;
 
 export type GameId = (typeof GAME_IDS)[number];
@@ -32,7 +33,7 @@ export const MIN_BET = 1;
  * Games with nothing to choose before playing — the stake is the whole wager.
  * The client confirms these immediately on entering `choosing`.
  */
-export const GAMES_WITHOUT_WAGER_CHOICE: readonly GameId[] = ['slots', 'paigow'];
+export const GAMES_WITHOUT_WAGER_CHOICE: readonly GameId[] = ['slots', 'paigow', 'megaslots'];
 
 /** Formats a payout ratio like `3:2` for display. */
 export function formatOdds(multiplier: number): string {
@@ -160,7 +161,8 @@ export type Wager =
 	| { game: 'slots' }
 	| { game: 'threecard'; bet: ThreeCardBet }
 	| { game: 'ultimate'; bet: UltimateBet }
-	| { game: 'paigow' };
+	| { game: 'paigow' }
+	| { game: 'megaslots' };
 
 export type AnyGameState = unknown;
 
@@ -267,6 +269,15 @@ export type GameView = GameViewBase &
 				folded: boolean;
 		  }
 		| {
+				game: 'megaslots';
+				/** The paid spin; a resting window until the reels are spun. */
+				base: MegaSpinView;
+				/** Free spins won by the base spin, in order; empty if none. */
+				free: MegaSpinView[];
+				/** The whole round's win as a multiple of the stake. */
+				total: number;
+		  }
+		| {
 				game: 'paigow';
 				/** The player's seven cards, in a fixed order the SET_HAND indices refer to. */
 				hand: HandView;
@@ -286,6 +297,17 @@ export type GameView = GameViewBase &
 				results: { high: 1 | -1; low: 1 | -1 } | null;
 		  }
 	);
+
+/** One Mega Slots spin, as drawn: the window and what it paid. */
+export interface MegaSpinView {
+	/** Symbol indices into MEGA_SYMBOLS, by reel then row (top first). */
+	grid: number[][];
+	/** Winning lines: index into MEGA_LINES, the paying symbol, run length, pay in line bets. */
+	hits: { line: number; symbol: number; count: number; pay: number }[];
+	scatters: number;
+	/** What this spin paid as a multiple of the stake, before any free-spin multiplier. */
+	win: number;
+}
 
 /** A Pai Gow seven split into a five-card high hand and a two-card low hand. */
 export interface PaiGowSplit {

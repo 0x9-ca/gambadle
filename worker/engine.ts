@@ -218,6 +218,8 @@ export function defaultWager(gameId: GameId, bet: number): Wager {
 			return { game: 'ultimate', bet: { ante: bet } };
 		case 'paigow':
 			return { game: 'paigow' };
+		case 'megaslots':
+			return { game: 'megaslots' };
 	}
 }
 

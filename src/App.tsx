@@ -247,7 +247,7 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 			return run.current?.view ? (
 				<div className="panel panel--table">
 					<div className={busy ? 'busy' : undefined}>
-						<GameBoard view={run.current.view} busy={busy} onAction={(action) => void act(action)} />
+						<GameBoard view={run.current.view} busy={busy} onAction={(action) => void act(action)} stake={run.current.bet} />
 					</div>
 				</div>
 			) : null;

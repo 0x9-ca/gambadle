@@ -10,6 +10,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { colorOf, SLOT_LINES, SLOT_SYMBOLS } from '../../shared/games';
 import type { Action, CardView, GameId, GameView, HandView, PaiGowSplit } from '../../shared/protocol';
 import { Hand, PlayingCard } from './PlayingCard';
+import { MegaSlotsBoard } from './MegaSlots';
 import { SlotIcon } from './SlotIcon';
 import { SlotsPaytable } from './wagers';
 
@@ -23,6 +24,8 @@ interface BoardProps {
 	 * cosmetic: the outcome is already in the view the server sent.
 	 */
 	animate?: boolean;
+	/** The round's stake, for boards that show winnings in chips. */
+	stake?: number;
 }
 
 const prefersReducedMotion = (): boolean =>
@@ -77,6 +80,8 @@ export function GameBoard(props: BoardProps & { view: GameView }) {
 			return <UltimateBoard {...props} view={props.view} />;
 		case 'paigow':
 			return <PaiGowBoard {...props} view={props.view} />;
+		case 'megaslots':
+			return <MegaSlotsBoard {...props} view={props.view} />;
 	}
 }
 

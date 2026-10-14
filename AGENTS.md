@@ -13,7 +13,7 @@ Use this file as the working contract for any coding agent.
 - **DB:** D1 (`env.DB`)
 - **Frontend:** React + Vite + TypeScript (`src/`)
 - **Server game logic:** `worker/` (authoritative; client is display-only)
-- **Games:** blackjack (with the TriLux side bet), roulette, baccarat, coinflip, dice, slots, three card poker, Ultimate Texas Hold'em, Pai Gow Poker
+- **Games:** blackjack (with the TriLux side bet), roulette, baccarat, coinflip, dice, slots, three card poker, Ultimate Texas Hold'em, Pai Gow Poker, Mega Slots (5×5, 40 lines, ~92% RTP; math in shared/megaslots.ts)
 
 Core invariant: **all outcomes and chip movements are server-side only**.
 

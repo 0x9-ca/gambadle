@@ -1432,6 +1432,321 @@ button:disabled {
 	margin-top: 0.75rem;
 }
 
+/* --------------------------------------------------------------------- */
+/* Mega Slots: a flashy cabinet around a 5×5 window.                       */
+/* --------------------------------------------------------------------- */
+
+.mega {
+	--mega-gold: #fbbf24;
+	position: relative;
+	padding: 0.55rem;
+	border-radius: 16px;
+	background:
+		radial-gradient(ellipse at 50% 0%, rgb(236 72 153 / 0.35), transparent 60%),
+		linear-gradient(180deg, #3b0764, #1e1b4b 70%, #0f0a2e);
+	border: 2px solid var(--mega-gold);
+	box-shadow:
+		0 0 0 3px #78350f,
+		0 0 24px rgb(251 191 36 / 0.35),
+		inset 0 0 18px rgb(0 0 0 / 0.6);
+	transition: box-shadow 300ms ease, border-color 300ms ease;
+}
+.mega--bonus {
+	border-color: #f472b6;
+	box-shadow:
+		0 0 0 3px #831843,
+		0 0 30px rgb(244 114 182 / 0.6),
+		inset 0 0 18px rgb(0 0 0 / 0.6);
+}
+
+.mega__marquee {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 0.45rem 0.5rem 0.55rem;
+	margin-bottom: 0.45rem;
+	border-radius: 10px;
+	background: linear-gradient(180deg, #7c2d12, #431407);
+	overflow: hidden;
+}
+/* Chasing bulbs around the marquee. */
+.mega__lights {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	padding: 3px;
+	background: repeating-linear-gradient(90deg, #fde68a 0 6px, transparent 6px 14px);
+	-webkit-mask:
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask-composite: exclude;
+	animation: mega-chase 0.6s linear infinite;
+	opacity: 0.9;
+}
+@keyframes mega-chase {
+	to {
+		background-position: 14px 0;
+	}
+}
+.mega__title {
+	position: relative;
+	font-family: Impact, 'Arial Black', var(--font);
+	font-size: 1.6rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	line-height: 1.1;
+	background: linear-gradient(180deg, #fff7d1, var(--mega-gold) 55%, #b45309);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	filter: drop-shadow(0 2px 0 #3b0764);
+}
+.mega__sub {
+	position: relative;
+	font-size: 0.68rem;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: #fde68a;
+}
+
+.mega__window {
+	position: relative;
+	display: grid;
+	grid-template-columns: repeat(5, 1fr);
+	gap: 3px;
+	padding: 4px;
+	border-radius: 10px;
+	background: #07051a;
+	box-shadow: inset 0 0 14px rgb(0 0 0 / 0.9);
+	overflow: hidden;
+}
+
+.mega__reel {
+	position: relative;
+	aspect-ratio: 1 / 5;
+	overflow: hidden;
+	border-radius: 6px;
+	background: linear-gradient(90deg, #1b1340, #2a1e5c 50%, #1b1340);
+	display: flex;
+	flex-direction: column;
+}
+.mega__cell {
+	flex: none;
+	aspect-ratio: 1;
+	padding: 11%;
+	display: grid;
+	place-items: center;
+	position: relative;
+}
+.mega__cell .slot-icon {
+	width: 100%;
+	height: 100%;
+}
+
+/* A spinning reel: the blurred strip scrolls past on a loop. */
+.mega__strip {
+	animation: mega-scroll 0.32s linear infinite;
+	filter: blur(1.4px) brightness(1.1);
+}
+@keyframes mega-scroll {
+	from {
+		transform: translateY(-50%);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
+/* A reel coming to rest overshoots a touch and settles. */
+.mega__reel--land {
+	animation: mega-land 0.32s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+@keyframes mega-land {
+	from {
+		transform: translateY(-12%);
+	}
+}
+
+.mega__cell--hit {
+	background: radial-gradient(circle, rgb(251 191 36 / 0.45), transparent 70%);
+	box-shadow: inset 0 0 0 2px var(--mega-gold);
+	border-radius: 6px;
+	animation: mega-pulse 0.9s ease-in-out infinite;
+}
+@keyframes mega-pulse {
+	50% {
+		transform: scale(1.08);
+	}
+}
+
+.mega__lines {
+	position: absolute;
+	inset: 4px;
+	width: calc(100% - 8px);
+	height: calc(100% - 8px);
+	pointer-events: none;
+}
+.mega__lines polyline {
+	fill: none;
+	stroke-width: 0.09;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	filter: drop-shadow(0 0 0.08px #000);
+	stroke-dasharray: 8;
+	animation: mega-trace 0.5s ease-out both;
+}
+@keyframes mega-trace {
+	from {
+		stroke-dashoffset: 8;
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+.mega__banner,
+.mega__tier {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	pointer-events: none;
+}
+.mega__banner {
+	background: radial-gradient(circle, rgb(76 5 25 / 0.85), rgb(7 5 26 / 0.92));
+	color: #fde68a;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	font-size: 0.8rem;
+	animation: mega-zoom 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.mega__banner-big {
+	font-family: Impact, 'Arial Black', var(--font);
+	font-size: 2rem;
+	letter-spacing: 0.04em;
+	color: #f9a8d4;
+	text-shadow: 0 0 14px #ec4899;
+}
+@keyframes mega-zoom {
+	from {
+		transform: scale(0.4);
+		opacity: 0;
+	}
+}
+
+.mega__tier {
+	inset: 34% -4px;
+	border-block: 2px solid var(--mega-gold);
+	background: rgb(7 5 26 / 0.85);
+	animation: mega-zoom 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.mega__tier span {
+	font-family: Impact, 'Arial Black', var(--font);
+	font-size: 2.6rem;
+	letter-spacing: 0.04em;
+	line-height: 1;
+	background: linear-gradient(180deg, #fff7d1, var(--mega-gold) 50%, #d97706);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	filter: drop-shadow(0 3px 0 #7c2d12) drop-shadow(0 0 12px rgb(251 191 36 / 0.8));
+	animation: mega-throb 0.9s ease-in-out 0.5s infinite;
+}
+.mega__tier--mega {
+	border-color: #f472b6;
+}
+.mega__tier--mega span {
+	font-size: 2.9rem;
+	background-image: linear-gradient(180deg, #fdf2f8, #f472b6 45%, #a21caf);
+	filter: drop-shadow(0 3px 0 #4a044e) drop-shadow(0 0 14px rgb(244 114 182 / 0.9));
+}
+@keyframes mega-throb {
+	50% {
+		transform: scale(1.08) rotate(-2deg);
+	}
+}
+.mega--big .mega__window,
+.mega--mega .mega__window {
+	animation: mega-flash 0.6s ease-in-out 3;
+}
+@keyframes mega-flash {
+	50% {
+		box-shadow:
+			inset 0 0 14px rgb(0 0 0 / 0.9),
+			0 0 0 2px var(--mega-gold),
+			0 0 28px var(--mega-gold);
+	}
+}
+
+.mega__meter {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.6rem;
+	margin-top: 0.45rem;
+	padding: 0.35rem 0.6rem;
+	border-radius: 8px;
+	background: #07051a;
+	border: 1px solid #4c1d95;
+	min-height: 2.4rem;
+}
+.mega__caption {
+	font-size: 0.8rem;
+	color: #ddd6fe;
+}
+.mega__win {
+	font-family: var(--mono);
+	font-weight: 800;
+	font-size: 1.25rem;
+	color: var(--mega-gold);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.mega__win .board__label {
+	color: #a78bfa;
+	margin-right: 0.25rem;
+}
+
+.mega__spin {
+	min-height: 3.1rem;
+	font-size: 1.1rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.mega__paytable {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.85rem;
+	font-variant-numeric: tabular-nums;
+}
+.mega__paytable th,
+.mega__paytable td {
+	padding: 0.15rem 0.3rem;
+	text-align: right;
+	border-top: 1px solid var(--line);
+}
+.mega__paytable thead th {
+	border-top: 0;
+	color: var(--ink-faint);
+	font-size: 0.7rem;
+}
+.mega__paytable th:first-child {
+	text-align: left;
+}
+.mega__pay-icon {
+	display: inline-block;
+	width: 1.8rem;
+	height: 1.8rem;
+	vertical-align: middle;
+}
+
 /* Dice and coin, drawn in CSS so they look the same on every device. */
 
 .dice-row {

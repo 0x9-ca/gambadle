@@ -274,6 +274,7 @@ function titleFor(game: string): string {
 			threecard: 'Three Card Poker',
 			ultimate: "Ultimate Texas Hold'em",
 			paigow: 'Pai Gow Poker',
+			megaslots: 'Mega Slots',
 		}[game] ?? game
 	);
 }

@@ -236,6 +236,7 @@ function titleFor(game: GameId): string {
 			threecard: 'Three Card Poker',
 			ultimate: "Ultimate Texas Hold'em",
 			paigow: 'Pai Gow Poker',
+			megaslots: 'Mega Slots',
 		}[game]
 	);
 }
@@ -275,7 +276,7 @@ export function ResultPanel({ result, chips }: { result: RoundResult; chips: num
 			{/* The board goes first so the reveal is watched, not spoiled by the verdict. */}
 			{result.view ? (
 				<div className="board--static">
-					<GameBoard view={result.view} busy={false} onAction={() => {}} animate />
+					<GameBoard view={result.view} busy={false} onAction={() => {}} animate stake={result.bet} />
 				</div>
 			) : null}
 			<div className={`reveal${result.view ? ' result__verdict' : ''}`} style={{ animationDelay: `${delay}s` }}>

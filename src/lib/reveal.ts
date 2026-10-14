@@ -7,6 +7,7 @@
  */
 
 import type { GameId, RoundResult } from '../../shared/protocol';
+import { BASE_DONE, megaEnd } from './megaTimeline';
 
 const REVEAL_SECONDS: Record<GameId, number> = {
 	blackjack: 1.4,
@@ -18,8 +19,12 @@ const REVEAL_SECONDS: Record<GameId, number> = {
 	threecard: 0.6,
 	ultimate: 0.6,
 	paigow: 0.8,
+	megaslots: BASE_DONE / 1000,
 };
 
 export function revealSeconds(result: RoundResult | null): number {
-	return result?.view ? REVEAL_SECONDS[result.game] : 0;
+	if (!result?.view) return 0;
+	// Mega Slots plays its free spins on the result board, so it takes as long as they do.
+	if (result.view.game === 'megaslots') return megaEnd(result.view.free.length) / 1000 + 0.2;
+	return REVEAL_SECONDS[result.game];
 }
