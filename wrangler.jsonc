@@ -1,0 +1,58 @@
+/**
+ * Gambadle — Cloudflare Worker + D1
+ * Deploy target: https://gamba.0x9.ca
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "gambadle",
+	"main": "worker/index.ts",
+	"compatibility_date": "2026-10-01",
+	"compatibility_flags": ["nodejs_compat"],
+
+	"assets": {
+		// SPA routes are served index.html and never reach the Worker, so they
+		// are free. Security headers for assets live in public/_headers; the
+		// Worker attaches its own to API responses.
+		"not_found_handling": "single-page-application"
+	},
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "gambadle",
+			"database_id": "022f4107-01b2-4fa9-bf0f-1543fbab8771",
+			"migrations_dir": "migrations"
+		}
+	],
+
+	/**
+	 * Housekeeping only. The daily reset is implicit — every run row is stamped
+	 * with its America/New_York day and voided automatically when that day no
+	 * longer matches (see worker/time.ts). Nothing time-sensitive depends on
+	 * this trigger, so it runs once a day at an arbitrary UTC time to purge
+	 * abandoned run rows.
+	 */
+	"triggers": {
+		"crons": ["0 12 * * *"]
+	},
+
+	/**
+	 * 0x9.ca is on Cloudflare nameservers, so the Worker can act as the origin
+	 * and manage DNS + TLS for the subdomain itself.
+	 */
+	"routes": [
+		{
+			"pattern": "gamba.0x9.ca",
+			"custom_domain": true
+		}
+	],
+
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"head_sampling_rate": 1
+		}
+	},
+
+	"upload_source_maps": true
+}

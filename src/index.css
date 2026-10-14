@@ -1,0 +1,1539 @@
+/*
+ * Gambadle — a dark felt casino table, mobile first.
+ *
+ * One accent (brass) for value, green for wins, red for losses. Chips are the
+ * loudest thing on screen because they are the thing you are managing.
+ */
+
+:root {
+	--felt: #0b1a14;
+	--felt-light: #123024;
+	--rail: #071310;
+	--surface: #10241c;
+	--surface-2: #163026;
+	--line: #24463a;
+
+	--ink: #eef6f1;
+	--ink-dim: #9db3a8;
+	--ink-faint: #6b8279;
+
+	--brass: #e3b23c;
+	--brass-dim: #9c7a26;
+	--win: #4ade80;
+	--loss: #f87171;
+	--red-felt: #7f1d1d;
+	--black-felt: #111827;
+
+	--radius: 12px;
+	--radius-sm: 8px;
+
+	--font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+	color-scheme: dark;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	min-height: 100%;
+}
+
+body {
+	margin: 0;
+	min-height: 100dvh;
+	background:
+		radial-gradient(ellipse 120% 80% at 50% -10%, var(--felt-light), transparent 60%),
+		var(--felt);
+	color: var(--ink);
+	font-family: var(--font);
+	font-size: 16px;
+	line-height: 1.45;
+	-webkit-font-smoothing: antialiased;
+	/* Keep the phone from bouncing or zooming on button mash. */
+	overscroll-behavior-y: contain;
+	-webkit-tap-highlight-color: transparent;
+}
+
+#root {
+	min-height: 100dvh;
+	display: flex;
+	flex-direction: column;
+}
+
+button {
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+	border: 0;
+	background: none;
+}
+
+button:disabled {
+	cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------- */
+/* Layout                                                                 */
+/* --------------------------------------------------------------------- */
+
+.app {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 34rem;
+	margin: 0 auto;
+	padding: 0 1rem 2rem;
+}
+
+.app__main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	padding-top: 1rem;
+}
+
+/* --------------------------------------------------------------------- */
+/* Header                                                                 */
+/* --------------------------------------------------------------------- */
+
+.topbar {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	background: color-mix(in srgb, var(--rail) 92%, transparent);
+	backdrop-filter: blur(8px);
+	border-bottom: 1px solid var(--line);
+}
+
+.topbar__inner {
+	width: 100%;
+	max-width: 34rem;
+	margin: 0 auto;
+	padding: 0.6rem 1rem;
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.brand {
+	font-weight: 800;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	font-size: 0.8rem;
+	color: var(--brass);
+	white-space: nowrap;
+}
+
+.topbar__tag {
+	color: var(--ink-faint);
+	font-size: 0.72rem;
+	white-space: nowrap;
+}
+
+.topbar__spacer {
+	flex: 1;
+}
+
+.chips {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.35rem;
+	font-family: var(--mono);
+	font-size: 1.15rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: var(--brass);
+	transition: color 300ms ease;
+}
+
+.chips--flash-win {
+	color: var(--win);
+}
+.chips--flash-loss {
+	color: var(--loss);
+}
+
+.chips__label {
+	font-size: 0.6rem;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--ink-faint);
+	font-family: var(--font);
+	font-weight: 600;
+}
+
+/* Round progress pips. */
+.pips {
+	display: flex;
+	gap: 0.3rem;
+	align-items: center;
+}
+
+.pip {
+	width: 0.55rem;
+	height: 0.55rem;
+	border-radius: 50%;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	transition: background 300ms ease, border-color 300ms ease, box-shadow 300ms ease;
+}
+
+.pip--done {
+	background: var(--brass-dim);
+	border-color: var(--brass-dim);
+}
+.pip--lost {
+	background: var(--loss);
+	border-color: var(--loss);
+}
+.pip--current {
+	background: var(--brass);
+	border-color: var(--brass);
+	box-shadow: 0 0 0 3px rgb(227 178 60 / 0.18);
+}
+
+.countdown {
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	color: var(--ink-faint);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------- */
+/* Panels                                                                 */
+/* --------------------------------------------------------------------- */
+
+.panel {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: 1rem;
+	animation: panel-in 0.3s ease-out both;
+}
+
+/* Nested panels (a summary inside a picker) arrive with their parent. */
+.panel .panel {
+	animation: none;
+}
+
+@keyframes panel-in {
+	from {
+		opacity: 0;
+		transform: translateY(0.5rem);
+	}
+}
+
+.panel--table {
+	background:
+		radial-gradient(ellipse at 50% 0%, rgb(255 255 255 / 0.035), transparent 70%),
+		var(--surface);
+	box-shadow:
+		inset 0 1px 0 rgb(255 255 255 / 0.05),
+		0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.panel__title {
+	margin: 0 0 0.15rem;
+	font-size: 1.15rem;
+	font-weight: 700;
+	letter-spacing: 0.01em;
+}
+
+.panel__sub {
+	margin: 0 0 0.9rem;
+	color: var(--ink-dim);
+	font-size: 0.85rem;
+}
+
+.muted {
+	color: var(--ink-dim);
+}
+
+.faint {
+	color: var(--ink-faint);
+	font-size: 0.8rem;
+}
+
+/* --------------------------------------------------------------------- */
+/* Buttons                                                                */
+/* --------------------------------------------------------------------- */
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.4rem;
+	padding: 0.7rem 1.1rem;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	font-weight: 650;
+	font-size: 0.95rem;
+	min-height: 2.75rem;
+	transition:
+		transform 80ms ease,
+		background 120ms ease,
+		border-color 120ms ease;
+}
+
+.btn:active:not(:disabled),
+.choice:active:not(:disabled) {
+	transform: scale(0.97);
+}
+
+.btn:focus-visible,
+.choice:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 2px;
+}
+
+.btn:disabled {
+	opacity: 0.45;
+}
+
+.btn--primary {
+	background: linear-gradient(180deg, #f2c95c, var(--brass-dim));
+	color: #241a04;
+	border-color: #6b5215;
+	font-weight: 800;
+}
+
+.btn--danger {
+	background: linear-gradient(180deg, #b93a3a, #7f2020);
+	border-color: #5c1616;
+	color: #fff;
+}
+
+.btn--win {
+	background: linear-gradient(180deg, #3fbf6c, #1f7a44);
+	border-color: #17592f;
+	color: #04180c;
+}
+
+.btn--ghost {
+	background: transparent;
+}
+
+.btn--block {
+	width: 100%;
+}
+
+.btn-row {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.btn-row > .btn {
+	flex: 1;
+	min-width: 8rem;
+}
+
+/* --------------------------------------------------------------------- */
+/* Bet sizing                                                             */
+/* --------------------------------------------------------------------- */
+
+.bet-input {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	font-family: var(--mono);
+	font-size: 2.1rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	padding: 0.5rem 0;
+	color: var(--brass);
+}
+
+.bet-input button {
+	width: 2.5rem;
+	height: 2.5rem;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	font-size: 1.2rem;
+	font-weight: 700;
+	display: grid;
+	place-items: center;
+	flex: none;
+}
+
+.bet-input button:disabled {
+	opacity: 0.35;
+}
+
+.quick-bets {
+	display: flex;
+	gap: 0.4rem;
+	flex-wrap: wrap;
+	margin-top: 0.75rem;
+}
+
+.quick-bets .btn {
+	flex: 1;
+	min-width: 4rem;
+	padding: 0.5rem 0.4rem;
+	font-size: 0.85rem;
+	min-height: 2.4rem;
+}
+
+/* --------------------------------------------------------------------- */
+/* Wager pickers                                                          */
+/* --------------------------------------------------------------------- */
+
+.choice-grid {
+	display: grid;
+	gap: 0.5rem;
+}
+
+.choice-grid--2 {
+	grid-template-columns: repeat(2, 1fr);
+}
+.choice-grid--3 {
+	grid-template-columns: repeat(3, 1fr);
+}
+.choice-grid--4 {
+	grid-template-columns: repeat(4, 1fr);
+}
+
+.choice {
+	transition: transform 80ms ease, background 120ms ease, border-color 120ms ease;
+	padding: 0.6rem 0.4rem;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	font-size: 0.9rem;
+	font-weight: 600;
+	text-align: center;
+	min-height: 2.75rem;
+	display: grid;
+	place-items: center;
+	transition:
+		background 120ms ease,
+		border-color 120ms ease;
+}
+
+.choice--on {
+	background: rgb(227 178 60 / 0.16);
+	border-color: var(--brass);
+	color: var(--brass);
+}
+
+.choice--red {
+	background: var(--red-felt);
+	border-color: #a33;
+	color: #ffe;
+}
+.choice--red.choice--on {
+	background: #b91c1c;
+	border-color: #f87171;
+	color: #fff;
+}
+
+.choice--black {
+	background: var(--black-felt);
+	border-color: #3b4657;
+	color: #dfe6ef;
+}
+.choice--black.choice--on {
+	background: #1f2937;
+	border-color: #e5e7eb;
+	color: #fff;
+}
+
+.choice--green {
+	background: #14532d;
+	border-color: #22c55e;
+}
+
+.choice__odds {
+	font-size: 0.68rem;
+	color: var(--ink-faint);
+	font-family: var(--mono);
+	font-weight: 500;
+}
+
+.choice--on .choice__odds {
+	color: inherit;
+	opacity: 0.8;
+}
+
+/* The roulette number grid: 0 then 1-36. */
+.roulette-grid {
+	display: grid;
+	/* 0, twelve columns of numbers, then the column bets. */
+	grid-template-columns: 1.15fr repeat(12, 1fr) 1.3fr;
+	grid-template-rows: repeat(3, 2.1rem);
+	gap: 0.2rem;
+}
+
+.roulette-cell {
+	border-radius: 4px;
+	font-size: 0.72rem;
+	font-weight: 700;
+	display: grid;
+	place-items: center;
+	border: 1px solid transparent;
+	padding: 0;
+}
+
+.roulette-cell--red {
+	background: var(--red-felt);
+	color: #ffd9d9;
+}
+.roulette-cell--black {
+	background: var(--black-felt);
+	color: #dfe6ef;
+}
+.roulette-cell--green {
+	background: #14532d;
+	color: #c9f7d8;
+}
+
+.roulette-cell--column {
+	background: var(--surface-2);
+	border-color: var(--line);
+	color: var(--ink-dim);
+	font-size: 0.62rem;
+}
+
+.roulette-cell--on {
+	border-color: var(--brass);
+	box-shadow: inset 0 0 0 1px var(--brass);
+}
+
+/* Slider used for dice targets and pair-plus sizing. */
+.slider-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.slider-row input[type='range'] {
+	flex: 1;
+	accent-color: var(--brass);
+	height: 1.75rem;
+}
+
+.num-input {
+	width: 4.5rem;
+	padding: 0.35rem 0.4rem;
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--line);
+	background: var(--rail);
+	color: var(--brass);
+	font-family: var(--mono);
+	font-size: 1.1rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.num-input:focus {
+	outline: none;
+	border-color: var(--brass);
+	box-shadow: 0 0 0 3px rgb(227 178 60 / 0.2);
+}
+.num-input:disabled {
+	opacity: 0.45;
+}
+
+/* The main bet: the number itself is the box, as large as before. */
+.num-input--bet {
+	width: 7.5rem;
+	font-size: 2.1rem;
+	padding: 0.1rem 0.3rem;
+	background: transparent;
+	border-color: transparent;
+	border-bottom: 2px dashed var(--line);
+	border-radius: 0;
+}
+.num-input--bet:focus {
+	border-color: transparent;
+	border-bottom-color: var(--brass);
+	box-shadow: none;
+}
+
+.slider-value {
+	font-family: var(--mono);
+	font-size: 1.3rem;
+	font-weight: 700;
+	color: var(--brass);
+	min-width: 2.2rem;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------- */
+/* Cards                                                                  */
+/* --------------------------------------------------------------------- */
+
+.hand {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.card {
+	width: 3rem;
+	height: 4.2rem;
+	border-radius: 6px;
+	background: #fdfdfb;
+	border: 1px solid #b9c4bf;
+	box-shadow: 0 2px 6px rgb(0 0 0 / 0.4);
+	display: grid;
+	grid-template-rows: auto 1fr auto;
+	padding: 0.2rem 0.25rem;
+	font-family: var(--mono);
+	font-weight: 700;
+	font-size: 0.95rem;
+	color: #111;
+	position: relative;
+}
+
+.card__corner {
+	font-size: 0.8rem;
+	line-height: 1;
+}
+
+.card__pip {
+	font-size: 1.5rem;
+	display: grid;
+	place-items: center;
+	line-height: 1;
+}
+
+.card--red {
+	color: #b91c1c;
+}
+
+.card--back {
+	background:
+		repeating-linear-gradient(45deg, #7f1d1d, #7f1d1d 4px, #991b1b 4px, #991b1b 8px);
+	border-color: #5c1616;
+}
+
+.card--back .card__pip,
+.card--back .card__corner {
+	color: transparent;
+}
+
+.card--joker {
+	color: var(--brass-dim);
+	background: linear-gradient(160deg, #fffbe8, #f4e2a8);
+}
+
+/* Poker rows hold up to five cards, so they draw them a size down. */
+.hand--compact {
+	gap: 0.3rem;
+}
+.hand--compact .card {
+	width: 2.5rem;
+	height: 3.5rem;
+	font-size: 0.85rem;
+}
+.hand--compact .card__pip {
+	font-size: 1.2rem;
+}
+
+.board__stack {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+.board__stack .board__note {
+	max-width: none;
+}
+
+.board__note {
+	text-align: right;
+	max-width: 7.5rem;
+	letter-spacing: 0.04em;
+	text-transform: none;
+}
+
+/* Pai Gow: the seven cards are buttons; the two picked for the low hand lift. */
+.pick-hand {
+	justify-content: center;
+	padding-top: 0.6rem;
+}
+.card-pick {
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
+	border-radius: 6px;
+	transition: transform 120ms ease;
+}
+.card-pick--low {
+	transform: translateY(-0.6rem);
+}
+.card-pick--low .card {
+	outline: 2px solid var(--brass);
+	outline-offset: 1px;
+}
+.card-pick:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------- */
+/* Game boards                                                            */
+/* --------------------------------------------------------------------- */
+
+.board {
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+}
+
+.board__row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+/* The hand takes the middle and keeps its cards on one line. */
+.board__row > .hand {
+	flex: 1;
+	justify-content: flex-start;
+}
+
+.hand--fan {
+	gap: 0;
+}
+.hand--fan .card + .card {
+	margin-left: -0.9rem;
+}
+.board__row > .board__label:first-child {
+	flex: none;
+	min-width: 3.4rem;
+}
+
+.board__label {
+	font-size: 0.7rem;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ink-faint);
+	font-weight: 700;
+}
+
+.board__total {
+	white-space: nowrap;
+	text-align: right;
+	min-width: 2.5rem;
+	font-family: var(--mono);
+	font-size: 1.4rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+.board__total--soft {
+	color: var(--brass);
+	font-size: 0.75rem;
+	margin-left: 0.15rem;
+}
+
+.total-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 0.5rem;
+}
+
+/* Slots */
+
+.reels {
+	display: flex;
+	gap: 0.4rem;
+	justify-content: center;
+	padding: 0.75rem 0;
+}
+
+.reel {
+	width: 4rem;
+	height: 9rem;
+	border-radius: var(--radius-sm);
+	background: linear-gradient(180deg, #1b1206, #2a1c08);
+	border: 1px solid var(--brass-dim);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	box-shadow: inset 0 6px 12px rgb(0 0 0 / 0.6);
+}
+
+.reel__cell {
+	flex: 1;
+	display: grid;
+	place-items: center;
+	font-size: 1.75rem;
+	border-bottom: 1px solid rgb(255 255 255 / 0.06);
+	position: relative;
+}
+
+.reel__cell--win {
+	background: rgb(227 178 60 / 0.18);
+	box-shadow: inset 0 0 0 1px var(--brass);
+}
+
+.reel--spinning .reel__cell {
+	animation: reel-blink 0.09s steps(2) infinite;
+}
+
+@keyframes reel-blink {
+	50% {
+		opacity: 0.35;
+	}
+}
+
+/* Dice */
+
+
+
+/* Roulette wheel. Sizes are fractions of --wheel so the ball's track and
+   pocket radii (in the SVG's 200-unit viewBox) line up at any width. */
+
+.wheel {
+	--wheel: min(16rem, 72vw);
+	width: var(--wheel);
+	height: var(--wheel);
+	margin: 0 auto;
+	position: relative;
+	filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+}
+
+.wheel__rotor,
+.wheel__arm {
+	position: absolute;
+	inset: 0;
+}
+
+.wheel__face {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+.wheel__rim {
+	fill: #3a2414;
+	stroke: var(--brass-dim);
+	stroke-width: 2;
+}
+.wheel__track {
+	fill: #24170d;
+	stroke: #5b3a1e;
+	stroke-width: 1;
+}
+.wheel__pocket {
+	stroke: var(--brass-dim);
+	stroke-width: 0.6;
+}
+.wheel__pocket--red {
+	fill: #b91c1c;
+}
+.wheel__pocket--black {
+	fill: #111827;
+}
+.wheel__pocket--green {
+	fill: #15803d;
+}
+.wheel__num {
+	fill: #fff;
+	font-family: var(--mono);
+	font-size: 8.5px;
+	font-weight: 700;
+	text-anchor: middle;
+}
+.wheel__cone {
+	fill: #5b3a1e;
+	stroke: var(--brass-dim);
+	stroke-width: 1;
+}
+.wheel__hub {
+	fill: var(--brass);
+	stroke: var(--brass-dim);
+	stroke-width: 2;
+}
+
+/* The ball sits in its pocket (radius 61 of 100) unless it is still on the track (85). */
+.wheel__ball {
+	--pocket: calc(var(--wheel) * -0.305);
+	--track: calc(var(--wheel) * -0.425);
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: calc(var(--wheel) * 0.055);
+	height: calc(var(--wheel) * 0.055);
+	margin: calc(var(--wheel) * -0.0275) 0 0 calc(var(--wheel) * -0.0275);
+	border-radius: 50%;
+	background: radial-gradient(circle at 35% 30%, #fff, #d4d4d8 55%, #71717a);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+	transform: translateY(var(--pocket));
+}
+
+.wheel__result {
+	display: grid;
+	justify-items: center;
+	gap: 0.3rem;
+	min-height: 5.3rem;
+	align-content: center;
+}
+
+/* Roulette result ball */
+
+.wheel-ball {
+	width: 3.6rem;
+	height: 3.6rem;
+	border-radius: 50%;
+	display: grid;
+	place-items: center;
+	font-family: var(--mono);
+	font-size: 1.5rem;
+	font-weight: 800;
+	margin: 0 auto;
+	color: #fff;
+}
+
+.wheel-ball--red {
+	background: var(--red-felt);
+	box-shadow: 0 0 0 3px #a33;
+}
+.wheel-ball--black {
+	background: var(--black-felt);
+	box-shadow: 0 0 0 3px #3b4657;
+}
+.wheel-ball--green {
+	background: #14532d;
+	box-shadow: 0 0 0 3px #22c55e;
+}
+
+/* --------------------------------------------------------------------- */
+/* Results                                                                */
+/* --------------------------------------------------------------------- */
+
+.result {
+	text-align: center;
+	/* Block padding only: a result panel keeps the panel's own side padding. */
+	padding-block: 0.4rem;
+}
+
+.panel.result {
+	padding: 1rem;
+}
+
+/* The verdict under a result board, set off from the table above it. */
+.result__verdict {
+	margin-top: 1rem;
+	padding-top: 0.85rem;
+	border-top: 1px solid var(--line);
+}
+
+.result__headline--pop {
+	animation: pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@keyframes pop {
+	from {
+		transform: scale(0.6);
+		opacity: 0;
+	}
+}
+
+.result__headline {
+	font-size: 1.5rem;
+	font-weight: 800;
+	margin: 0;
+}
+
+.result__headline--win {
+	color: var(--win);
+}
+.result__headline--loss {
+	color: var(--loss);
+}
+.result__headline--push {
+	color: var(--brass);
+}
+
+.result__detail {
+	margin: 0.3rem 0 0;
+	color: var(--ink-dim);
+	font-size: 0.9rem;
+}
+
+.delta {
+	font-family: var(--mono);
+	font-size: 1.6rem;
+	font-weight: 800;
+	font-variant-numeric: tabular-nums;
+}
+
+.delta--win {
+	color: var(--win);
+}
+.delta--loss {
+	color: var(--loss);
+}
+
+/* Double or nothing */
+
+.don {
+	text-align: center;
+	border-color: var(--brass-dim);
+	background:
+		radial-gradient(ellipse at 50% 0%, rgb(227 178 60 / 0.12), transparent 70%),
+		var(--surface);
+}
+
+.don__stack {
+	font-family: var(--mono);
+	font-size: 2.4rem;
+	font-weight: 800;
+	color: var(--brass);
+	font-variant-numeric: tabular-nums;
+	margin: 0.25rem 0 0;
+}
+
+.don__chain {
+	font-size: 0.75rem;
+	color: var(--ink-faint);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	font-weight: 700;
+}
+
+/* --------------------------------------------------------------------- */
+/* Round log                                                              */
+/* --------------------------------------------------------------------- */
+
+.log {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}
+
+.log__row {
+	display: grid;
+	grid-template-columns: 1.25rem 1fr auto auto;
+	gap: 0.5rem;
+	align-items: center;
+	font-size: 0.82rem;
+	padding: 0.35rem 0.5rem;
+	border-radius: 6px;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+}
+
+/* Roulette's placed spots: name, amount and a remove button, no round number. */
+.spot-row {
+	grid-template-columns: 1fr auto auto;
+	padding-block: 0.2rem;
+}
+.spot-row .btn {
+	min-height: 2rem;
+	padding: 0.2rem 0.65rem;
+	font-size: 0.85rem;
+}
+
+.log__round {
+	font-family: var(--mono);
+	color: var(--ink-faint);
+}
+
+.log__game {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.log__delta {
+	font-family: var(--mono);
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+.log__delta--win {
+	color: var(--win);
+}
+.log__delta--loss {
+	color: var(--loss);
+}
+
+.log__doubled {
+	font-size: 0.6rem;
+	color: var(--brass);
+	border: 1px solid var(--brass-dim);
+	border-radius: 3px;
+	padding: 0 0.2rem;
+	letter-spacing: 0.05em;
+}
+
+/* --------------------------------------------------------------------- */
+/* Leaderboard                                                            */
+/* --------------------------------------------------------------------- */
+
+.tabs {
+	display: flex;
+	gap: 0.25rem;
+	padding: 0.25rem;
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+}
+
+.tab {
+	flex: 1;
+	padding: 0.45rem;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	font-weight: 650;
+	color: var(--ink-dim);
+	text-align: center;
+	min-height: 2.25rem;
+}
+
+.tab--on {
+	background: var(--surface-2);
+	color: var(--brass);
+}
+
+.board-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.board-row {
+	display: grid;
+	grid-template-columns: 1.75rem 1fr auto;
+	gap: 0.6rem;
+	align-items: center;
+	padding: 0.45rem 0.6rem;
+	border-radius: 6px;
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	font-size: 0.9rem;
+}
+
+.board-row--you {
+	border-color: var(--brass);
+	background: rgb(227 178 60 / 0.1);
+}
+
+.board-row__rank {
+	font-family: var(--mono);
+	font-weight: 700;
+	color: var(--ink-faint);
+	text-align: right;
+}
+
+.board-row__rank--1 {
+	color: var(--brass);
+}
+
+.board-row__name {
+	font-weight: 650;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.board-row__name small {
+	display: block;
+	font-weight: 500;
+	font-size: 0.68rem;
+	color: var(--ink-faint);
+}
+
+.board-row__chips {
+	font-family: var(--mono);
+	font-weight: 800;
+	font-variant-numeric: tabular-nums;
+	color: var(--brass);
+}
+
+/* Name entry */
+
+.name-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+}
+
+.input {
+	width: 100%;
+	padding: 0.75rem 0.9rem;
+	border-radius: var(--radius-sm);
+	background: var(--rail);
+	border: 1px solid var(--line);
+	color: var(--ink);
+	font: inherit;
+	min-height: 2.9rem;
+}
+
+.input:focus {
+	outline: 2px solid var(--brass);
+	outline-offset: 1px;
+	border-color: transparent;
+}
+
+.error {
+	color: var(--loss);
+	font-size: 0.85rem;
+}
+
+/* Notice shown when the daily reset wipes the run. */
+
+.notice {
+	padding: 0.6rem 0.8rem;
+	border-radius: var(--radius-sm);
+	background: rgb(227 178 60 / 0.12);
+	border: 1px solid var(--brass-dim);
+	color: var(--brass);
+	font-size: 0.85rem;
+	text-align: center;
+}
+
+/* Busy overlay while an action is in flight. */
+
+.busy {
+	opacity: 0.55;
+	pointer-events: none;
+	transition: opacity 120ms ease;
+}
+
+/* Wider screens: give the table some breathing room. */
+@media (min-width: 40rem) {
+	.app {
+		max-width: 38rem;
+	}
+	.card {
+		width: 3.4rem;
+		height: 4.7rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-delay: 0s !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+.board__row--active {
+	outline: 1px solid var(--brass);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* A finished board shown for reference on the result screen: no controls. */
+.board--static .btn-row,
+.board--static .paytable {
+	display: none;
+}
+
+.board--static {
+	margin-top: 0.75rem;
+}
+
+/* Dice and coin, drawn in CSS so they look the same on every device. */
+
+.dice-row {
+	display: flex;
+	justify-content: center;
+	gap: 1rem;
+	padding: 0.75rem 0 0.25rem;
+}
+
+.die {
+	width: 3.6rem;
+	height: 3.6rem;
+	padding: 0.45rem;
+	border-radius: 0.7rem;
+	background: linear-gradient(145deg, #fffdf6, #e4ddc8);
+	box-shadow:
+		inset 0 -3px 0 rgb(0 0 0 / 0.12),
+		0 6px 14px rgb(0 0 0 / 0.45);
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	grid-template-rows: repeat(3, 1fr);
+	place-items: center;
+}
+.die__pip {
+	width: 0.6rem;
+	height: 0.6rem;
+	border-radius: 50%;
+	background: #1c1c1c;
+	box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.6);
+}
+.die--blank .die__pip {
+	background: #b9b2a0;
+	box-shadow: none;
+}
+
+.coin {
+	width: 5.5rem;
+	height: 5.5rem;
+	margin: 0.5rem auto 0;
+	border-radius: 50%;
+	display: grid;
+	place-items: center;
+	background: radial-gradient(circle at 35% 30%, #fbe7a1, var(--brass) 55%, var(--brass-dim));
+	box-shadow:
+		inset 0 0 0 4px rgb(255 255 255 / 0.18),
+		inset 0 0 0 7px rgb(0 0 0 / 0.12),
+		0 8px 18px rgb(0 0 0 / 0.45);
+	color: #4a3608;
+	font-family: var(--mono);
+	font-size: 2.2rem;
+	font-weight: 800;
+}
+/* Tails is the silver side. */
+.coin--tails {
+	background: radial-gradient(circle at 35% 30%, #ffffff, #c7cdd4 55%, #7b8590);
+	color: #2c3238;
+}
+
+.board__caption {
+	margin: 0;
+	text-align: center;
+	color: var(--ink-dim);
+	font-size: 0.95rem;
+}
+.board__caption-value {
+	font-family: var(--mono);
+	font-size: 1.35rem;
+	color: var(--brass);
+	margin-left: 0.2rem;
+}
+
+/* Motion: card deal and flip, dice, coin, roulette ball, and the late verdict. */
+
+@keyframes card-deal {
+	from {
+		opacity: 0;
+		transform: translate(-1.5rem, -1rem) rotate(-8deg) scale(0.9);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes card-flip {
+	from {
+		transform: perspective(300px) rotateY(90deg);
+		opacity: 0.3;
+	}
+	to {
+		transform: perspective(300px) rotateY(0);
+		opacity: 1;
+	}
+}
+
+.card--deal {
+	animation: card-deal 0.35s ease-out both;
+}
+
+.card--flip {
+	animation: card-flip 0.45s ease-out both;
+}
+
+@keyframes tumble {
+	0% {
+		transform: translateY(0) rotate(0deg);
+	}
+	50% {
+		transform: translateY(-0.6rem) rotate(180deg);
+	}
+	100% {
+		transform: translateY(0) rotate(360deg);
+	}
+}
+
+.die--rolling {
+	animation: tumble 0.45s ease-in-out infinite;
+}
+.die--rolling:nth-child(2) {
+	animation-duration: 0.38s;
+	animation-direction: reverse;
+}
+
+/* A landed die settles with a small bounce. */
+.die:not(.die--rolling):not(.die--blank) {
+	animation: die-land 0.35s ease-out;
+}
+@keyframes die-land {
+	from {
+		transform: translateY(-0.4rem) rotate(-12deg);
+	}
+}
+
+@keyframes coin-flip {
+	0% {
+		transform: translateY(0) rotateX(0deg);
+	}
+	50% {
+		transform: translateY(-1.2rem) rotateX(540deg);
+	}
+	100% {
+		transform: translateY(0) rotateX(1080deg);
+	}
+}
+
+.coin--flip {
+	animation: coin-flip 0.9s ease-in-out infinite;
+}
+.coin--flip .coin__face {
+	opacity: 0.5;
+}
+.coin--heads,
+.coin--tails {
+	animation: coin-land 0.35s ease-out;
+}
+@keyframes coin-land {
+	from {
+		transform: scale(1.15);
+	}
+}
+
+
+
+
+
+
+
+/* Waiting on the server: rotor turns clockwise, ball runs the other way on the
+   track. It fades in only once the rotor is already moving. */
+@keyframes wheel-turn {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@keyframes ball-orbit {
+	to {
+		transform: rotate(-360deg);
+	}
+}
+@keyframes ball-appear {
+	from {
+		opacity: 0;
+	}
+}
+
+.wheel--spin .wheel__rotor {
+	animation: wheel-turn 2.4s linear infinite;
+}
+.wheel--spin .wheel__arm {
+	animation: ball-orbit 0.7s linear infinite;
+}
+.wheel--spin .wheel__ball {
+	transform: translateY(var(--track));
+	animation: ball-appear 0.2s ease-out 0.35s backwards;
+}
+
+/* Result: both run down from rest to the inline end rotations (no 'to'
+   keyframe, so they end exactly where the static style puts them). The ball
+   rides the rotor, so once its own run-down ends it is carried in its pocket. */
+@keyframes rotor-settle {
+	from {
+		transform: rotate(0deg);
+	}
+}
+@keyframes arm-settle {
+	from {
+		transform: rotate(0deg);
+	}
+}
+@keyframes ball-drop {
+	0% {
+		opacity: 0;
+		transform: translateY(var(--track));
+	}
+	14% {
+		opacity: 0;
+		transform: translateY(var(--track));
+	}
+	20% {
+		opacity: 1;
+	}
+	60% {
+		transform: translateY(var(--track));
+	}
+	76% {
+		transform: translateY(var(--pocket));
+	}
+	84% {
+		transform: translateY(calc((var(--pocket) + var(--track)) / 2.4));
+	}
+	92% {
+		transform: translateY(var(--pocket));
+	}
+}
+
+.wheel--settle .wheel__rotor {
+	animation: rotor-settle 3s cubic-bezier(0.2, 0.55, 0.35, 1) both;
+}
+.wheel--settle .wheel__arm {
+	animation: arm-settle 2.3s cubic-bezier(0.25, 0.5, 0.4, 1) both;
+}
+.wheel--settle .wheel__ball {
+	animation: ball-drop 2.3s linear both;
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+		/* Hidden, not just transparent, so nothing can be tapped before it shows. */
+		visibility: hidden;
+	}
+	to {
+		opacity: 1;
+		visibility: visible;
+	}
+}
+
+/* The verdict waits for the board's reveal, set per game by the delay inline. */
+.reveal {
+	animation: fade-in 0.3s ease both;
+}
+
+/* Roulette chip placement */
+
+.chip-input {
+	flex: 1;
+	min-width: 4rem;
+	font-size: 0.85rem;
+	min-height: 2.4rem;
+}
+
+.roulette-cell {
+	position: relative;
+}
+
+.roulette-cell__chips {
+	position: absolute;
+	top: -0.35rem;
+	right: -0.2rem;
+	min-width: 1.1rem;
+	padding: 0 0.2rem;
+	border-radius: 999px;
+	background: var(--brass);
+	color: #1a1204;
+	font-size: 0.65rem;
+	font-weight: 800;
+	line-height: 1.1rem;
+}

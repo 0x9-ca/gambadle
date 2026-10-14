@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    "types": ["./worker-configuration.d.ts", "vite/client"],
+
+    /* Worker code is bundled by Vite/wrangler, not run as Node ESM, so it uses
+       bundler resolution rather than the nodenext inherited from tsconfig.node.json. */
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  /* `shared` holds the wire contract imported by both sides. */
+  "include": ["worker", "shared"]
+}
