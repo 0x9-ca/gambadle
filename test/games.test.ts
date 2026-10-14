@@ -977,11 +977,16 @@ describe('baccarat', () => {
 	const handler = gameById('baccarat');
 
 	it('deals the opening two cards to both sides before anything is resolved', () => {
-		const step = handler.init(
-			handler.parseWager({ game: 'baccarat', bet: { main: 'player' } }, BET, HUGE_STACK),
-			BET,
-			HUGE_STACK
-		);
+		// A coup the deal settles (a natural, or both hands standing) has nothing left to
+		// resolve, so look at one that waits for Deal.
+		const deal = () =>
+			handler.init(
+				handler.parseWager({ game: 'baccarat', bet: { main: 'player' } }, BET, HUGE_STACK),
+				BET,
+				HUGE_STACK
+			);
+		let step = deal();
+		while (step.outcome) step = deal();
 		const v = viewOf<BaccaratView>(step.view);
 		expect(v.player.cards.length).toBe(2);
 		expect(v.banker.cards.length).toBe(2);
@@ -1140,11 +1145,19 @@ describe('baccarat', () => {
 	});
 
 	it('only accepts DEAL, and only once', () => {
-		const step = handler.init(
+		// A coup that settles on the deal has no DEAL step, so take one that waits.
+		let step = handler.init(
 			handler.parseWager({ game: 'baccarat', bet: { main: 'player' } }, BET, HUGE_STACK),
 			BET,
 			HUGE_STACK
 		);
+		while (step.outcome) {
+			step = handler.init(
+				handler.parseWager({ game: 'baccarat', bet: { main: 'player' } }, BET, HUGE_STACK),
+				BET,
+				HUGE_STACK
+			);
+		}
 		const done = handler.apply(step.state, { type: 'DEAL' });
 		expect(handler.legalActions(done.state)).toEqual([]);
 		expect(() => handler.apply(done.state, { type: 'DEAL' })).toThrow(GameError);
