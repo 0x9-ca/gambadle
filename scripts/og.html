@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Gambadle social card</title>
+<!--
+	The 1200x630 Open Graph / Twitter card, drawn as a web page so it stays editable.
+	Rendered to public/og.png by scripts/draw-og.mjs. Everything is inline SVG and CSS;
+	the only outside input is the font (Roboto if the script was given it, else a fallback).
+-->
+<style>
+	:root {
+		--brass: #e3b23c;
+		--brass-hi: #fff1b8;
+		--brass-lo: #9c6a14;
+		--felt: #0b1a14;
+	}
+	* { box-sizing: border-box; margin: 0; }
+	html, body { width: 1200px; height: 630px; overflow: hidden; background: var(--felt); }
+	body { font-family: Roboto, 'Helvetica Neue', Arial, sans-serif; color: #fff; position: relative; }
+
+	/* ----- the table ----- */
+	.bg { position: absolute; inset: 0; }
+	.felt {
+		background:
+			radial-gradient(ellipse 62% 95% at 76% 48%, #1f5e43 0%, #123626 45%, #0a1a13 100%);
+	}
+	.rays {
+		background: repeating-conic-gradient(from 3deg at 880px 305px, rgb(255 213 110 / 0.13) 0deg 5deg, transparent 5deg 15deg);
+		-webkit-mask-image: radial-gradient(circle at 880px 305px, #000 8%, transparent 62%);
+		mask-image: radial-gradient(circle at 880px 305px, #000 8%, transparent 62%);
+	}
+	.vignette {
+		background:
+			radial-gradient(ellipse 85% 85% at 55% 50%, transparent 55%, rgb(0 0 0 / 0.7) 100%),
+			linear-gradient(90deg, rgb(2 8 5 / 0.65) 0%, transparent 46%);
+	}
+	/* a thin brass frame, like the edge of the rail */
+	.frame {
+		position: absolute; inset: 14px;
+		border: 2px solid rgb(227 178 60 / 0.55);
+		border-radius: 20px;
+		box-shadow: inset 0 0 0 6px rgb(0 0 0 / 0.25), 0 0 40px rgb(227 178 60 / 0.15);
+	}
+	.suits {
+		position: absolute; left: 0; right: 0; top: 36px;
+		font-size: 22px; letter-spacing: 14px; color: rgb(227 178 60 / 0.55); padding-left: 64px;
+	}
+
+	svg.scene { position: absolute; inset: 0; width: 1200px; height: 630px; }
+
+	/* ----- the words ----- */
+	.copy { position: absolute; left: 64px; top: 0; width: 600px; height: 630px; }
+	.pill {
+		position: absolute; top: 96px; left: 0;
+		padding: 7px 16px 7px 16px; border-radius: 999px;
+		border: 2px solid var(--brass); color: var(--brass-hi);
+		font-weight: 700; font-size: 19px; letter-spacing: 0.24em; text-transform: uppercase;
+		background: rgb(0 0 0 / 0.35);
+		box-shadow: 0 0 24px rgb(227 178 60 / 0.3);
+	}
+	.title {
+		position: absolute; top: 138px; left: -4px;
+		font-family: Roboto, Impact, 'Arial Black', sans-serif;
+		font-weight: 900; font-style: italic;
+		font-size: 150px; line-height: 1; letter-spacing: -0.015em; text-transform: uppercase;
+		white-space: nowrap;
+		background: linear-gradient(180deg, #fffbe0 0%, #ffe28a 22%, #e8b13a 52%, #b97a12 78%, #ffd86a 100%);
+		-webkit-background-clip: text; background-clip: text; color: transparent;
+		-webkit-text-stroke: 3px #5a2c05;
+		paint-order: stroke fill;
+		filter:
+			drop-shadow(0 4px 0 #6b3606) drop-shadow(0 8px 0 #4a2404) drop-shadow(0 12px 0 #2e1602)
+			drop-shadow(0 18px 22px rgb(0 0 0 / 0.75)) drop-shadow(0 0 30px rgb(255 190 60 / 0.35));
+	}
+	.tag {
+		position: absolute; top: 322px; left: 0; width: 560px;
+		font-weight: 800; font-size: 41px; line-height: 1.12;
+		text-shadow: 0 3px 14px rgb(0 0 0 / 0.7);
+	}
+	.tag em { font-style: normal; color: var(--brass); }
+	.stats { position: absolute; top: 456px; left: 0; display: flex; gap: 10px; }
+	.stat {
+		padding: 8px 14px; border-radius: 10px;
+		background: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.05));
+		border: 1.5px solid rgb(255 255 255 / 0.22);
+		font-weight: 700; font-size: 18px; letter-spacing: 0.05em; text-transform: uppercase;
+		backdrop-filter: blur(2px);
+		box-shadow: 0 6px 18px rgb(0 0 0 / 0.4);
+	}
+	.stat b { color: var(--brass); font-weight: 900; font-size: 23px; margin-right: 6px; letter-spacing: 0; }
+	.url {
+		position: absolute; top: 538px; left: 0;
+		font-weight: 900; font-size: 34px; letter-spacing: 0.04em; color: var(--brass-hi);
+		text-shadow: 0 2px 0 #5a2c05, 0 0 22px rgb(227 178 60 / 0.55);
+	}
+	.url::before { content: '♠  '; color: var(--brass); }
+</style>
+</head>
+<body>
+	<div class="bg felt"></div>
+	<div class="bg rays"></div>
+
+	<svg class="scene" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+		<defs>
+			<radialGradient id="wood" cx="50%" cy="50%" r="50%">
+				<stop offset="0.86" stop-color="#7a4a22" />
+				<stop offset="0.93" stop-color="#4b2a12" />
+				<stop offset="1" stop-color="#27130a" />
+			</radialGradient>
+			<radialGradient id="cone" cx="40%" cy="35%" r="75%">
+				<stop offset="0" stop-color="#d9a45a" />
+				<stop offset="0.45" stop-color="#8a5526" />
+				<stop offset="1" stop-color="#3a1f0d" />
+			</radialGradient>
+			<radialGradient id="gold" cx="35%" cy="30%" r="80%">
+				<stop offset="0" stop-color="#fff6c8" />
+				<stop offset="0.4" stop-color="#f1c04a" />
+				<stop offset="1" stop-color="#9a6410" />
+			</radialGradient>
+			<linearGradient id="goldbar" x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0" stop-color="#fff1b8" />
+				<stop offset="0.5" stop-color="#e3b23c" />
+				<stop offset="1" stop-color="#8a5a0e" />
+			</linearGradient>
+			<radialGradient id="ball" cx="35%" cy="30%" r="75%">
+				<stop offset="0" stop-color="#fff" />
+				<stop offset="0.55" stop-color="#e5e7eb" />
+				<stop offset="1" stop-color="#8b93a1" />
+			</radialGradient>
+			<linearGradient id="trail" x1="0" y1="0" x2="1" y2="0">
+				<stop offset="0" stop-color="#fff" stop-opacity="0" />
+				<stop offset="1" stop-color="#fff" stop-opacity="0.9" />
+			</linearGradient>
+			<linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+				<stop offset="0" stop-color="#ffffff" />
+				<stop offset="1" stop-color="#ece7d8" />
+			</linearGradient>
+			<linearGradient id="die" x1="0" y1="0" x2="1" y2="1">
+				<stop offset="0" stop-color="#fffdf5" />
+				<stop offset="1" stop-color="#d9d1b8" />
+			</linearGradient>
+			<radialGradient id="glow">
+				<stop offset="0" stop-color="#ffd978" stop-opacity="0.55" />
+				<stop offset="1" stop-color="#ffd978" stop-opacity="0" />
+			</radialGradient>
+			<filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+				<feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#000" flood-opacity="0.6" />
+			</filter>
+			<filter id="soft"><feGaussianBlur stdDeviation="14" /></filter>
+		</defs>
+
+		<!-- light pooling under the wheel -->
+		<circle cx="880" cy="305" r="330" fill="url(#glow)" />
+		<ellipse cx="884" cy="585" rx="270" ry="26" fill="#000" opacity="0.55" filter="url(#soft)" />
+
+		<!-- the wheel; built by the script below -->
+		<g id="wheel" transform="translate(880 305) rotate(14)"></g>
+
+		<!-- the ball, mid-run on the track, with its trail -->
+		<g transform="translate(880 305)">
+			<path d="M -150 -156 A 216 216 0 0 1 -84 -199" fill="none" stroke="url(#trail)" stroke-width="9" stroke-linecap="round" opacity="0.8" transform="rotate(-6)" />
+			<circle cx="-84" cy="-199" r="23" fill="url(#glow)" transform="rotate(-6)" />
+			<circle cx="-84" cy="-199" r="10.5" fill="url(#ball)" transform="rotate(-6)" />
+		</g>
+
+		<!-- the royal flush, fanned across the foot of the wheel -->
+		<g id="cards" transform="translate(912 700)"></g>
+
+		<!-- the dice: a lucky seven -->
+		<g id="dice"></g>
+
+		<!-- chips -->
+		<g id="chips"></g>
+
+		<!-- sparkles -->
+		<g id="sparks" fill="#fff6c8"></g>
+	</svg>
+
+	<div class="bg vignette"></div>
+	<div class="frame"></div>
+	<div class="suits">♠ ♥ ♦ ♣</div>
+
+	<div class="copy">
+		<div class="pill">The daily casino gauntlet</div>
+		<div class="title">Gambadle</div>
+		<div class="tag">Five random casino games.<br /><em>Same table for everyone.</em></div>
+		<div class="stats">
+			<div class="stat"><b>1,000</b>chips</div>
+			<div class="stat"><b>5</b>rounds</div>
+			<div class="stat"><b>1</b>ranked run / day</div>
+		</div>
+		<div class="url">gamba.0x9.ca</div>
+	</div>
+
+<script>
+	const NS = 'http://www.w3.org/2000/svg';
+	const el = (name, attrs = {}, parent) => {
+		const node = document.createElementNS(NS, name);
+		for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+		if (parent) parent.appendChild(node);
+		return node;
+	};
+	const rad = (deg) => (deg * Math.PI) / 180;
+
+	// ---------------------------------------------------------------- wheel
+	{
+		const g = document.getElementById('wheel');
+		const ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+		const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+		const STEP = 360 / ORDER.length;
+		el('circle', { r: 262, fill: '#1a0d05' }, g);
+		el('circle', { r: 258, fill: 'url(#wood)', stroke: '#e3b23c', 'stroke-width': 5 }, g);
+		el('circle', { r: 244, fill: 'none', stroke: 'rgb(255 230 160 / 0.35)', 'stroke-width': 2 }, g);
+		// ball track
+		el('circle', { r: 226, fill: '#150b05' }, g);
+		el('circle', { r: 226, fill: 'none', stroke: '#6b4220', 'stroke-width': 3 }, g);
+		const point = (r, a) => `${(r * Math.cos(rad(a - 90))).toFixed(2)} ${(r * Math.sin(rad(a - 90))).toFixed(2)}`;
+		const wedge = (i, outer, inner) => {
+			const a0 = (i - 0.5) * STEP;
+			const a1 = (i + 0.5) * STEP;
+			return `M${point(outer, a0)} A${outer} ${outer} 0 0 1 ${point(outer, a1)} L${point(inner, a1)} A${inner} ${inner} 0 0 0 ${point(inner, a0)} Z`;
+		};
+		ORDER.forEach((n, i) => {
+			const fill = n === 0 ? '#16833f' : RED.has(n) ? '#c8202c' : '#12161f';
+			el('path', { d: wedge(i, 204, 150), fill, stroke: '#e3b23c', 'stroke-width': 1.6 }, g);
+			// a lighter inner edge so each pocket reads as a dish
+			el('path', { d: wedge(i, 204, 192), fill: 'rgb(255 255 255 / 0.10)' }, g);
+			const t = el('text', {
+				x: 0, y: -176, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+				'font-family': 'Roboto, Arial, sans-serif', 'font-weight': 900, 'font-size': 19, fill: '#fff',
+				transform: `rotate(${i * STEP})`,
+			}, g);
+			t.textContent = n;
+		});
+		el('circle', { r: 150, fill: 'none', stroke: '#e3b23c', 'stroke-width': 3 }, g);
+		el('circle', { r: 146, fill: '#4b2a12' }, g);
+		el('circle', { r: 128, fill: 'url(#cone)', stroke: '#2a150a', 'stroke-width': 3 }, g);
+		for (let r = 112; r > 40; r -= 24) el('circle', { r, fill: 'none', stroke: 'rgb(255 220 150 / 0.18)', 'stroke-width': 2 }, g);
+		el('circle', { r: 100, fill: 'none', stroke: 'url(#goldbar)', 'stroke-width': 5 }, g);
+		// the turret: four gold spokes and a spindle
+		for (let k = 0; k < 4; k++) {
+			const s = el('g', { transform: `rotate(${k * 90 + 12})` }, g);
+			el('rect', { x: -6, y: -96, width: 12, height: 80, rx: 6, fill: 'url(#goldbar)', stroke: '#6b3d08', 'stroke-width': 1.4 }, s);
+			el('circle', { cy: -98, r: 11, fill: 'url(#gold)', stroke: '#6b3d08', 'stroke-width': 1.4 }, s);
+		}
+		el('circle', { r: 30, fill: 'url(#gold)', stroke: '#6b3d08', 'stroke-width': 2.5 }, g);
+		el('circle', { r: 14, fill: '#fff6c8', opacity: 0.85 }, g);
+		// glass glare
+		el('path', { d: `M ${point(240, -62)} A 240 240 0 0 1 ${point(240, 18)}`, fill: 'none', stroke: 'rgb(255 255 255 / 0.22)', 'stroke-width': 9, 'stroke-linecap': 'round' }, g);
+	}
+
+	// ---------------------------------------------------------------- cards
+	{
+		const g = document.getElementById('cards');
+		const hand = [['10', 1], ['J', 1], ['Q', 1], ['K', 1], ['A', 1]];
+		const W = 130, H = 184;
+		const angles = [-30, -15, 0, 15, 30];
+		hand.forEach(([rank, _], i) => {
+			const card = el('g', { transform: `rotate(${angles[i]}) translate(${-W / 2} ${-H - 138})`, filter: 'url(#shadow)' }, g);
+			el('rect', { width: W, height: H, rx: 13, fill: 'url(#card)', stroke: '#b9b09a', 'stroke-width': 1.5 }, card);
+			el('rect', { x: 6, y: 6, width: W - 12, height: H - 12, rx: 9, fill: 'none', stroke: 'rgb(200 30 46 / 0.22)', 'stroke-width': 1.5 }, card);
+			const label = (extra) => {
+				const t = el('g', { transform: extra }, card);
+				const r = el('text', { x: 21, y: 40, 'text-anchor': 'middle', 'font-family': 'Roboto, Arial, sans-serif', 'font-weight': 900, 'font-size': rank === '10' ? 30 : 36, fill: '#c81e2e' }, t);
+				r.textContent = rank;
+				const s = el('text', { x: 21, y: 66, 'text-anchor': 'middle', 'font-size': 28, fill: '#c81e2e' }, t);
+				s.textContent = '♥';
+			};
+			label('');
+			label(`rotate(180 ${W / 2} ${H / 2})`);
+			const pip = el('text', { x: W / 2, y: H / 2 + 24, 'text-anchor': 'middle', 'font-size': rank === 'A' ? 110 : 84, fill: '#c81e2e' }, card);
+			pip.textContent = '♥';
+		});
+	}
+
+	// ---------------------------------------------------------------- dice
+	{
+		const g = document.getElementById('dice');
+		const PIPS = { 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]] };
+		const die = (x, y, size, rot, face) => {
+			const d = el('g', { transform: `translate(${x} ${y}) rotate(${rot})`, filter: 'url(#shadow)' }, g);
+			el('rect', { x: -size / 2, y: -size / 2, width: size, height: size, rx: size * 0.2, fill: 'url(#die)', stroke: '#a89f84', 'stroke-width': 1.5 }, d);
+			el('rect', { x: -size / 2 + 5, y: -size / 2 + 5, width: size - 10, height: size - 10, rx: size * 0.16, fill: 'none', stroke: 'rgb(255 255 255 / 0.7)', 'stroke-width': 2 }, d);
+			for (const [px, py] of PIPS[face]) el('circle', { cx: px * size * 0.25, cy: py * size * 0.25, r: size * 0.085, fill: '#1c1c1c' }, d);
+		};
+		die(1122, 392, 90, 17, 4);
+		die(1112, 502, 78, -21, 3);
+	}
+
+	// ---------------------------------------------------------------- chips
+	{
+		const g = document.getElementById('chips');
+		const chip = (x, y, r, rot, color, accent, text) => {
+			const c = el('g', { transform: `translate(${x} ${y}) rotate(${rot})`, filter: 'url(#shadow)' }, g);
+			el('circle', { r, fill: color }, c);
+			el('circle', { r: r - 1.5, fill: 'none', stroke: 'rgb(0 0 0 / 0.35)', 'stroke-width': 3 }, c);
+			el('circle', { r: r - 6, fill: 'none', stroke: accent, 'stroke-width': r * 0.2, 'stroke-dasharray': `${r * 0.34} ${r * 0.34}` }, c);
+			el('circle', { r: r * 0.62, fill: color, stroke: accent, 'stroke-width': 2.5 }, c);
+			const t = el('text', { x: 0, y: r * 0.14, 'text-anchor': 'middle', 'font-family': 'Roboto, Arial, sans-serif', 'font-weight': 900, 'font-size': r * 0.5, fill: accent }, c);
+			t.textContent = text;
+		};
+		// a stack settling in the top right, one rolling near the wheel's left
+		chip(1118, 72, 50, 8, '#a81b1b', '#fff', '500');
+		chip(1084, 110, 46, -18, '#0f1420', '#e3b23c', '100');
+		chip(1128, 138, 42, 24, '#e3b23c', '#5a2c05', '1K');
+		chip(724, 540, 40, -12, '#157a3d', '#fff', '25');
+		chip(676, 580, 32, 20, '#a81b1b', '#fff', '10');
+	}
+
+	// ---------------------------------------------------------------- sparkles
+	{
+		const g = document.getElementById('sparks');
+		const star = (x, y, r, o) => {
+			const d = `M ${x} ${y - r} Q ${x} ${y} ${x + r} ${y} Q ${x} ${y} ${x} ${y + r} Q ${x} ${y} ${x - r} ${y} Q ${x} ${y} ${x} ${y - r} Z`;
+			el('path', { d, opacity: o }, g);
+		};
+		[[700, 78, 20, 0.95], [1160, 300, 16, 0.85], [640, 360, 11, 0.7], [1060, 230, 11, 0.7], [820, 600, 13, 0.7], [1160, 585, 12, 0.7], [676, 200, 9, 0.6], [930, 36, 12, 0.75]].forEach((s) => star(...s));
+	}
+</script>
+</body>
+</html>

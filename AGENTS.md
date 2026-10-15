@@ -118,6 +118,10 @@ npx tsc -b
 # tests
 npx vitest run
 
+# regenerate the link-preview image (public/og.png) after editing scripts/og.html;
+# OG_FONTS = a dir of Roboto .woff2 files (Regular/Medium/Bold/Black/BlackItalic), else a fallback font is used
+OG_FONTS=<dir> node scripts/draw-og.mjs
+
 # browser smoke test: plays whole runs at phone size until every game has
 # come up; fails on page errors, stuck screens or sideways overflow
 # (screenshots in test/e2e/output; set CHROMIUM_PATH if needed)
