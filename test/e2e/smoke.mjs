@@ -28,8 +28,8 @@ const out = join(root, 'test', 'e2e', 'output');
 const PORT = 5298;
 const BASE = `http://localhost:${PORT}`;
 const MAX_RUNS = 25;
-/** How long a screen may offer nothing to press: a reveal plays out first, and a Mega Slots free-spin round takes about 13 seconds. */
-const STUCK_MS = 16_000;
+/** How long a screen may offer nothing to press: a reveal plays out first, and five Mega Slots spins with a few free-spin bonuses take most of a minute. */
+const STUCK_MS = 60_000;
 const GAMES = ['blackjack', 'roulette', 'baccarat', 'coinflip', 'dice', 'slots', 'threecard', 'ultimate', 'paigow', 'megaslots', 'videopoker', 'craps'];
 
 const failures = [];

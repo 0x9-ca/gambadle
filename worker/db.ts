@@ -172,9 +172,11 @@ export type SubmitResult =
 export async function submitScore(db: D1Database, input: ScoreInput): Promise<SubmitResult> {
 	const nameKey = input.name.toLowerCase();
 
+	// Per day: the run id is the session id, which outlives the day (it is how a
+	// player keeps their identity), so an earlier day's score must not count.
 	const existing = await db
-		.prepare('SELECT chips FROM scores WHERE run_id = ?1 LIMIT 1')
-		.bind(input.runId)
+		.prepare('SELECT chips FROM scores WHERE run_id = ?1 AND day = ?2 LIMIT 1')
+		.bind(input.runId, input.day)
 		.first<{ chips: number }>();
 	if (existing) return { ok: false, reason: 'already_submitted' };
 

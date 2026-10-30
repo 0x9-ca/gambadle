@@ -856,6 +856,47 @@ button:disabled {
 	}
 }
 
+/* Slots: which of the round's spins is showing, and what it has won so far. */
+.slots__meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0 0.25rem 0.4rem;
+}
+
+.slots__pips {
+	display: flex;
+	gap: 0.35rem;
+}
+
+.slots__pip {
+	width: 0.7rem;
+	height: 0.7rem;
+	border-radius: 50%;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	transition: background 200ms ease, border-color 200ms ease;
+}
+
+.slots__pip--now {
+	border-color: var(--brass);
+	box-shadow: 0 0 0 3px rgb(227 178 60 / 0.18);
+}
+.slots__pip--won {
+	background: var(--win);
+	border-color: var(--win);
+}
+.slots__pip--lost {
+	background: var(--surface);
+	border-color: var(--ink-faint);
+}
+
+.slots__won {
+	font-family: var(--mono);
+	font-variant-numeric: tabular-nums;
+}
+
 /* Dice */
 
 

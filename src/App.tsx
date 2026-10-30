@@ -19,6 +19,7 @@ import {
 import { GameBoard } from './components/boards';
 import { DoubleOrNothing, NameEntry, RoundLog, Submitted, UnrankedEnd } from './components/endgame';
 import { Leaderboard } from './components/Leaderboard';
+import { PracticeBar, PracticeBust, PracticeMenu } from './components/Practice';
 import { Stats } from './components/Stats';
 import { BetScreen, ChoosingScreen, ResultPanel } from './components/screens';
 import { ApiRequestError, fetchState, sendAction } from './lib/api';
@@ -88,6 +89,8 @@ export default function App() {
 
 	const run = view?.run ?? null;
 	const shown = useRevealHold(run);
+	// The staging deployment plays practice runs of single games instead of ranked ones.
+	const staging = view?.staging === true;
 
 	// A new screen starts at the top. The long ones (a roulette table to place
 	// chips on, a bet screen under a result) leave the page scrolled down, and
@@ -106,8 +109,9 @@ export default function App() {
 			<header className="topbar">
 				<div className="topbar__inner">
 					<span className="brand">Gambadle</span>
-					{shown ? <RoundPips run={shown.run} /> : null}
-					{run && run.eligible === false ? <span className="topbar__tag">Unranked</span> : null}
+					{staging ? <span className="topbar__tag">Staging</span> : null}
+					{shown && !shown.run.testGame ? <RoundPips run={shown.run} /> : null}
+					{run && run.eligible === false && !staging ? <span className="topbar__tag">Unranked</span> : null}
 					{run && run.eligible !== false && run.seed ? (
 						<span className="topbar__tag" title={`Daily run for ${run.seed}`}>
 							{formatDay(run.seed)}
@@ -139,6 +143,8 @@ export default function App() {
 						<p className="faint" style={{ textAlign: 'center' }}>
 							Taking your seat…
 						</p>
+					) : run === null && staging ? (
+						<PracticeMenu busy={busy} onPick={(game) => void act({ type: 'START_TEST', game })} />
 					) : run === null ? (
 						<StartScreen
 							busy={busy}
@@ -146,19 +152,40 @@ export default function App() {
 							onStart={() => void act({ type: 'START' })}
 						/>
 					) : (
-						<Play run={run} busy={busy} act={act} />
+						<>
+							{run.testGame ? (
+								<PracticeBar
+									game={run.testGame}
+									busy={busy}
+									onReset={() => void act({ type: 'START_TEST', game: run.testGame! })}
+									onChange={() => void act({ type: 'ABANDON' })}
+								/>
+							) : null}
+							<Play run={run} busy={busy} act={act} />
+						</>
 					)}
 
 					{shown ? <RoundLog run={shown.run} /> : null}
-					{/* Refreshes when a run finishes, once its reveal has played out. */}
-					<Stats refreshKey={shown?.run.phase === 'finished' ? `done-${shown.run.history.length}` : 'live'} />
-					<Leaderboard />
+					{/* Not before the first reply: staging has neither panel, and asking would only 404. */}
+					{!loaded || staging ? null : (
+						<>
+							{/* Refreshes when a run finishes, once its reveal has played out. */}
+							<Stats refreshKey={shown?.run.phase === 'finished' ? `done-${shown.run.history.length}` : 'live'} />
+							<Leaderboard />
+						</>
+					)}
 				</main>
 
 				<footer className="faint" style={{ textAlign: 'center', paddingTop: '0.5rem' }}>
-					<Countdown seconds={view?.secondsUntilReset} />
-					<br />
-					Play money only. No purchase, no cash-out.
+					{staging ? (
+						'Staging build. Practice chips only; nothing is recorded.'
+					) : (
+						<>
+							<Countdown seconds={view?.secondsUntilReset} />
+							<br />
+							Play money only. No purchase, no cash-out.
+						</>
+					)}
 				</footer>
 			</div>
 		</>
@@ -277,6 +304,21 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 			);
 
 		case 'finished':
+			if (run.testGame) {
+				return (
+					<>
+						{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
+						<AfterReveal result={lastResult}>
+							<PracticeBust
+								game={run.testGame}
+								busy={busy}
+								onReset={() => void act({ type: 'START_TEST', game: run.testGame! })}
+								onChange={() => void act({ type: 'ABANDON' })}
+							/>
+						</AfterReveal>
+					</>
+				);
+			}
 			return (
 				<>
 					{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}

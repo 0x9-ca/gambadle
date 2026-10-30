@@ -54,5 +54,43 @@
 		}
 	},
 
-	"upload_source_maps": true
+	"upload_source_maps": true,
+
+	/**
+	 * Staging: https://gamba-stg.0x9.ca, built and deployed with
+	 * CLOUDFLARE_ENV=staging (see deploy-staging.sh). Practice runs of single
+	 * games from a fresh 1000 chips, with no ranking, stats or leaderboard.
+	 * It has its own Worker, secret and D1 database, so nothing it does reaches
+	 * production. Bindings, routes, triggers and vars are not inherited by an
+	 * environment, hence the repeats.
+	 */
+	"env": {
+		"staging": {
+			"name": "gambadle-staging",
+			"vars": { "STAGING": "1" },
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "gambadle-staging",
+					"database_id": "c8577828-8877-47b3-b46a-8e1542cc7df6",
+					"migrations_dir": "migrations"
+				}
+			],
+			"triggers": {
+				"crons": ["0 12 * * *"]
+			},
+			"routes": [
+				{
+					"pattern": "gamba-stg.0x9.ca",
+					"custom_domain": true
+				}
+			],
+			"observability": {
+				"enabled": true,
+				"logs": {
+					"head_sampling_rate": 1
+				}
+			}
+		}
+	}
 }

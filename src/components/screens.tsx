@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { SLOT_SPINS } from '../../shared/games';
 import {
 	GAMES_WITHOUT_WAGER_CHOICE,
 	MIN_BET,
@@ -34,8 +35,12 @@ export function BetScreen({
 	busy: boolean;
 	onBegin: (bet: number) => void;
 }) {
-	const [bet, setBet] = useState(() => Math.min(50, run.chips));
-	const max = run.chips;
+	// The slot machines play five spins a round and ask for the bet on each; the
+	// round's stake is five times it. Everywhere else the bet is the stake.
+	const perSpin = run.upcoming === 'slots' || run.upcoming === 'megaslots';
+	const spins = perSpin ? SLOT_SPINS : 1;
+	const max = Math.max(MIN_BET, Math.floor(run.chips / spins));
+	const [bet, setBet] = useState(() => Math.min(perSpin ? 10 : 50, max));
 
 	// Keep the draft in range if the stack changes underneath it.
 	useEffect(() => {
@@ -44,12 +49,12 @@ export function BetScreen({
 
 	const set = (value: number) => setBet(Math.min(Math.max(MIN_BET, value), Math.max(MIN_BET, max)));
 	const step = (delta: number) => set(bet + delta);
-	const quick = [...new Set([10, 50, 100, 250, 500, max].filter((v) => v >= MIN_BET && v <= max))];
+	const quick = [...new Set((perSpin ? [1, 5, 10, 25, 50, 100, max] : [10, 50, 100, 250, 500, max]).filter((v) => v >= MIN_BET && v <= max))];
 
 	return (
 		<div className="panel panel--table">
 			<h2 className="panel__title">
-				Round {Math.min(run.round, TOTAL_ROUNDS)}
+				Round {run.testGame ? run.round : Math.min(run.round, TOTAL_ROUNDS)}
 				{run.upcoming ? `: ${titleFor(run.upcoming)}` : ` of ${TOTAL_ROUNDS}`}
 			</h2>
 			{run.upcoming === 'roulette' ? (
@@ -70,10 +75,14 @@ export function BetScreen({
 				</>
 			) : (
 				<>
-			<p className="panel__sub">{ANTE_NOTE[run.upcoming ?? ''] ?? 'How much are you putting out?'}</p>
+			<p className="panel__sub">
+				{perSpin
+					? `${SLOT_SPINS} spins a round. Pick your bet per spin; your stake is ${SLOT_SPINS} times it.`
+					: (ANTE_NOTE[run.upcoming ?? ''] ?? 'How much are you putting out?')}
+			</p>
 
 			<div className="bet-input">
-				<button type="button" onClick={() => step(-stepSize(bet))} disabled={busy || bet <= MIN_BET} aria-label="Decrease bet">
+				<button type="button" onClick={() => step(-stepSize(bet))} disabled={busy || bet <= MIN_BET} aria-label={perSpin ? 'Decrease bet per spin' : 'Decrease bet'}>
 					−
 				</button>
 				<NumberField
@@ -81,10 +90,10 @@ export function BetScreen({
 					min={MIN_BET}
 					max={max}
 					value={bet}
-					label="Bet amount"
+					label={perSpin ? 'Bet per spin' : 'Bet amount'}
 					onChange={set}
 				/>
-				<button type="button" onClick={() => step(stepSize(bet))} disabled={busy || bet >= max} aria-label="Increase bet">
+				<button type="button" onClick={() => step(stepSize(bet))} disabled={busy || bet >= max} aria-label={perSpin ? 'Increase bet per spin' : 'Increase bet'}>
 					+
 				</button>
 			</div>
@@ -108,9 +117,11 @@ export function BetScreen({
 				className="btn btn--primary btn--block"
 				style={{ marginTop: '0.9rem' }}
 				disabled={busy || bet < MIN_BET || bet > max}
-				onClick={() => onBegin(bet)}
+				onClick={() => onBegin(bet * spins)}
 			>
-				{run.upcoming === 'craps' ? 'Line bet' : run.upcoming && ANTE_NOTE[run.upcoming] ? 'Ante' : 'Place'} {formatChips(bet)} chips
+				{perSpin
+					? `Place ${formatChips(bet)} a spin · ${formatChips(bet * spins)} chips in all`
+					: `${run.upcoming === 'craps' ? 'Line bet' : run.upcoming && ANTE_NOTE[run.upcoming] ? 'Ante' : 'Place'} ${formatChips(bet)} chips`}
 			</button>
 
 				</>
@@ -200,7 +211,9 @@ export function ChoosingScreen({
 			<p className="panel__sub">
 				{game === 'roulette'
 					? `Place up to ${formatChips(bet)} chips on any spots`
-					: `${formatChips(bet)} chips on the table`}
+					: game === 'slots' || game === 'megaslots'
+						? `${SLOT_SPINS} spins at ${formatChips(bet / SLOT_SPINS)} · ${formatChips(bet)} chips on the table`
+						: `${formatChips(bet)} chips on the table`}
 			</p>
 
 			{hasChoice ? (

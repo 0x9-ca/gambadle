@@ -246,12 +246,12 @@ export type GameView = GameViewBase &
 		| { game: 'dice'; roll: number; dice: number[]; won: boolean }
 		| {
 				game: 'slots';
-				/** Symbol indices by reel, three rows each. */
-				reels: number[][];
-				/** Row indices of winning paylines. */
-				lines: number[];
-				/** Profit multiplier summed across paylines. */
-				win: number;
+				/** The spins in order; empty until the SPIN is played. */
+				spins: SlotSpinView[];
+				/** The bet on each spin: the stake divided by `SLOT_SPINS`. */
+				perSpin: number;
+				/** The whole round's return as a multiple of the whole stake. */
+				total: number;
 		  }
 		| {
 				game: 'threecard';
@@ -313,11 +313,11 @@ export type GameView = GameViewBase &
 		  }
 		| {
 				game: 'megaslots';
-				/** The paid spin; a resting window until the reels are spun. */
-				base: MegaSpinView;
-				/** Free spins won by the base spin, in order; empty if none. */
-				free: MegaSpinView[];
-				/** The whole round's win as a multiple of the stake. */
+				/** The paid spins in order, each with the free spins it won; empty until the SPIN is played. */
+				rounds: MegaRoundView[];
+				/** The bet on each spin: the stake divided by `SLOT_SPINS`. */
+				perSpin: number;
+				/** The whole round's win as a multiple of the whole stake. */
 				total: number;
 		  }
 		| {
@@ -341,6 +341,25 @@ export type GameView = GameViewBase &
 		  }
 	);
 
+/** One spin of the three-reel slots, as drawn. */
+export interface SlotSpinView {
+	/** Symbol indices by reel, three rows each. */
+	reels: number[][];
+	/** Row indices of winning paylines. */
+	lines: number[];
+	/** What this spin returned as a multiple of its own bet (every winning line summed). */
+	win: number;
+}
+
+/** One paid Mega Slots spin and the free spins it won. */
+export interface MegaRoundView {
+	base: MegaSpinView;
+	/** Free spins won by the base spin, in order; empty if none. */
+	free: MegaSpinView[];
+	/** What the spin and its free spins returned as a multiple of that spin's bet. */
+	total: number;
+}
+
 /** One Mega Slots spin, as drawn: the window and what it paid. */
 export interface MegaSpinView {
 	/** Symbol indices into MEGA_SYMBOLS, by reel then row (top first). */
@@ -348,7 +367,7 @@ export interface MegaSpinView {
 	/** Winning lines: index into MEGA_LINES, the paying symbol, run length, pay in line bets. */
 	hits: { line: number; symbol: number; count: number; pay: number }[];
 	scatters: number;
-	/** What this spin paid as a multiple of the stake, before any free-spin multiplier. */
+	/** What this spin paid as a multiple of the spin's bet, before any free-spin multiplier. */
 	win: number;
 }
 
@@ -439,6 +458,11 @@ export interface RunState {
 	 * random (unranked runs, and runs saved before this existed).
 	 */
 	seed?: string | null;
+	/**
+	 * Staging only: the one game this practice run plays, round after round, with
+	 * no round limit and no leaderboard or stats. Absent on real runs.
+	 */
+	testGame?: GameId | null;
 }
 
 export function initialRunState(): RunState {
@@ -462,6 +486,8 @@ export function initialRunState(): RunState {
 
 export type Action =
 	| { type: 'START' }
+	/** Staging only: a practice run of one game from a fresh 1000 chips. */
+	| { type: 'START_TEST'; game: GameId }
 	| { type: 'BEGIN_ROUND'; bet: number }
 	| { type: 'WAGER'; wager: Wager }
 	| { type: 'HIT' }
@@ -511,6 +537,8 @@ export interface RunView {
 	wagered: number;
 	/** Whether a run started now could still reach the leaderboard today. */
 	rankedAvailable: boolean;
+	/** True on the staging deployment, which offers single-game practice instead of ranked runs. */
+	staging?: boolean;
 }
 
 export interface LeaderboardEntry {

@@ -11,7 +11,8 @@
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
-    "test:e2e": "node test/e2e/smoke.mjs"
+    "test:e2e": "node test/e2e/smoke.mjs",
+    "test:e2e:staging": "node test/e2e/staging.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

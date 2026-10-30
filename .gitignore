@@ -32,3 +32,9 @@ dist-ssr
 
 # Browser smoke test screenshots
 test/e2e/output
+test/e2e/output-staging
+
+# Keys, certificates and local tool settings
+*.pem
+*.key
+.claude/settings.local.json

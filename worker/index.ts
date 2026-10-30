@@ -105,9 +105,9 @@ async function handleState(request: Request, env: Env): Promise<Response> {
 	const sessionId = await readSession(request, env.SESSION_SECRET);
 	const { run, resetReason } = await loadRun(env, sessionId);
 	return json({
-		...viewOf(run, resetReason),
+		...viewOf(env, run, resetReason),
 		wagered: run ? totalWagered(run) : 0,
-		rankedAvailable: await rankedAvailable(env, sessionId),
+		rankedAvailable: !isStaging(env) && (await rankedAvailable(env, sessionId)),
 	} satisfies RunView);
 }
 
@@ -146,11 +146,28 @@ async function rankedAvailable(env: Env, sessionId: string | null): Promise<bool
 }
 
 function viewOf(
+	env: Env,
 	run: RunState | null,
 	resetReason: RunView['resetReason']
 ): Omit<RunView, 'wagered' | 'rankedAvailable'> {
-	return { run: publicRun(run), resetReason, secondsUntilReset: secondsUntilReset() };
+	return {
+		run: publicRun(run),
+		resetReason,
+		secondsUntilReset: secondsUntilReset(),
+		...(isStaging(env) ? { staging: true } : {}),
+	};
 }
+
+/**
+ * The staging deployment (`STAGING` is set in wrangler.jsonc's staging
+ * environment only): practice runs of single games, no ranking, no stats, no
+ * leaderboard. Nothing it does reaches the production database.
+ */
+const isStaging = (env: Env): boolean => env.STAGING === '1';
+
+/** Leaderboard, stats and the daily comparison do not exist on staging. */
+const notOnStaging = (): Response =>
+	json({ error: 'Not available on staging', code: 'invalid_action' } satisfies ApiError, 404);
 
 
 // ---------------------------------------------------------------------------
@@ -170,6 +187,10 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 
 	// These two need database access rather than a state transition, so they are
 	// handled here instead of in the engine.
+	if (isStaging(env) && action.action.type === 'SUBMIT_NAME') return notOnStaging();
+	if (action.action.type === 'START_TEST' && !isStaging(env)) {
+		return json({ error: 'Practice runs only exist on staging', code: 'invalid_action' } satisfies ApiError, 403);
+	}
 	if (action.action.type === 'SUBMIT_NAME') {
 		return submitName(env, sessionId, existing, action.action.name);
 	}
@@ -178,20 +199,20 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 		// fresh identity, and with it a fresh "first run of the day".
 		if (sessionId) await deleteRun(env.DB, sessionId);
 		return json({
-			...viewOf(null, 'replaced'),
+			...viewOf(env, null, 'replaced'),
 			wagered: 0,
-			rankedAvailable: await rankedAvailable(env, sessionId),
+			rankedAvailable: !isStaging(env) && (await rankedAvailable(env, sessionId)),
 		} satisfies RunView);
 	}
 
-	if (!existing && action.action.type !== 'START') {
+	if (!existing && action.action.type !== 'START' && action.action.type !== 'START_TEST') {
 		return json({ error: 'No run in progress', code: 'no_run' } satisfies ApiError, 409);
 	}
 
 	const headers = new Headers();
 	let id = sessionId;
 	if (!id) {
-		// First action of a session, which is always START.
+		// First action of a session, which is always START (or START_TEST on staging).
 		id = await newSessionId();
 		headers.append(
 			'Set-Cookie',
@@ -224,7 +245,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 	// The run just ended (busted or survived): it counts toward the player's
 	// stats exactly once, whether or not a name is ever submitted.
 	// Stats are a nicety: failing to record one must not fail the action.
-	if (next.phase === 'finished' && existing?.phase !== 'finished') {
+	if (next.phase === 'finished' && existing?.phase !== 'finished' && !next.testGame) {
 		try {
 			await recordRunResult(env.DB, {
 				sessionId: id,
@@ -241,9 +262,9 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 
 	return json(
 		{
-			...viewOf(next, null),
+			...viewOf(env, next, null),
 			wagered: totalWagered(next),
-			rankedAvailable: await rankedAvailable(env, id),
+			rankedAvailable: !isStaging(env) && (await rankedAvailable(env, id)),
 		} satisfies RunView,
 		200,
 		headers
@@ -361,7 +382,7 @@ async function submitName(
 	await putRun(env.DB, { id: sessionId, day, phase: 'submitted', state: submitted, name });
 
 	return json({
-		...viewOf(submitted, null),
+		...viewOf(env, submitted, null),
 		wagered: totalWagered(submitted),
 		rankedAvailable: false,
 	} satisfies RunView);
@@ -372,6 +393,7 @@ async function submitName(
 // ---------------------------------------------------------------------------
 
 async function handleLeaderboard(request: Request, env: Env): Promise<Response> {
+	if (isStaging(env)) return notOnStaging();
 	const scope = new URL(request.url).searchParams.get('scope') === 'alltime' ? 'alltime' : 'today';
 
 	const sessionId = await readSession(request, env.SESSION_SECRET);
@@ -386,6 +408,7 @@ async function handleLeaderboard(request: Request, env: Env): Promise<Response> 
 // ---------------------------------------------------------------------------
 
 async function handleStats(request: Request, env: Env): Promise<Response> {
+	if (isStaging(env)) return notOnStaging();
 	const sessionId = await readSession(request, env.SESSION_SECRET);
 	const rows = sessionId ? await getRunResults(env.DB, sessionId) : [];
 	return json(summarizeStats(rows, etDay()) satisfies StatsView);
@@ -396,6 +419,7 @@ async function handleStats(request: Request, env: Env): Promise<Response> {
 // ---------------------------------------------------------------------------
 
 async function handleDaily(request: Request, env: Env): Promise<Response> {
+	if (isStaging(env)) return notOnStaging();
 	const sessionId = await readSession(request, env.SESSION_SECRET);
 	const day = etDay();
 	const rows = await getDailyResults(env.DB, day);

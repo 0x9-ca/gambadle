@@ -14,12 +14,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	SLOT_PAYTABLE,
+	SLOT_SPINS,
 	SLOT_STOPS_PER_REEL,
 	SLOT_STRIPS,
 	SLOT_SYMBOLS,
 	type SlotSymbol,
 } from '../shared/games';
-import type { Wager } from '../shared/protocol';
+import type { GameView, Wager } from '../shared/protocol';
 import { setSeed } from './helpers/seeded-rng';
 import { slots } from '../worker/games/slots';
 import { GameError } from '../worker/games/types';
@@ -85,6 +86,7 @@ function exactReturn(): number {
 	return total / WINDOWS;
 }
 
+/** One round: SLOT_SPINS spins dealt by the one SPIN. */
 function spin(): { returned: number; stake: number } {
 	const step = slots.init(wager, STAKE, STAKE * 1000);
 	const out = slots.apply(step.state, { type: 'SPIN' });
@@ -155,11 +157,12 @@ describe('slot return', () => {
 
 	it('agrees with Monte Carlo simulation of the real code', () => {
 		setSeed(0xc0ffee);
-		const SPINS = 60_000;
+		const ROUNDS = 12_000;
+		const SPINS = ROUNDS * SLOT_SPINS;
 		let returned = 0;
-		for (let i = 0; i < SPINS; i++) returned += spin().returned;
+		for (let i = 0; i < ROUNDS; i++) returned += spin().returned;
 		// Chips back per chip staked, matching the enumerated figure below.
-		const simulated = returned / (SPINS * STAKE);
+		const simulated = returned / (ROUNDS * STAKE);
 
 		// The machine is wildly skewed — one symbol pays 1720x and lands about
 		// once in 2667 spins — so the mean converges slowly and a tight bound
@@ -175,6 +178,7 @@ describe('slot return', () => {
 		const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
 		const variance =
 			returns.reduce((sum, pay) => sum + (pay - mean) ** 2, 0) / returns.length;
+		// A round averages five spins, so its return varies a fifth as much.
 		const tolerance = 4 * Math.sqrt(variance / SPINS);
 		// eslint-disable-next-line no-console
 		console.log(
@@ -198,8 +202,8 @@ describe('slots round', () => {
 		setSeed(99);
 		for (let i = 0; i < 2000; i++) {
 			const { returned } = spin();
-			// Three lines, each paying at most the top symbol's multiple.
-			expect(returned).toBeLessThanOrEqual((STAKE * 3 * SLOT_PAYTABLE.seven) / 3 + 1);
+			// Three lines a spin, each paying at most the top symbol's multiple.
+			expect(returned).toBeLessThanOrEqual(STAKE * 3 * SLOT_PAYTABLE.seven + 1);
 		}
 	});
 
@@ -227,13 +231,32 @@ describe('slots round', () => {
 		const step = slots.init(wager, STAKE, STAKE * 10);
 		expect(step.view.resolved).toBe(false);
 		const spun = slots.apply(step.state, { type: 'SPIN' });
-		const view = spun.view as {
-			resolved: boolean;
-			reels: number[][];
-		};
+		const view = spun.view as Extract<typeof spun.view, { game: 'slots' }>;
 		expect(spun.view.resolved).toBe(true);
-		expect(view.reels).toHaveLength(3);
-		for (const reel of view.reels) expect(reel).toHaveLength(3);
+		expect(view.spins).toHaveLength(SLOT_SPINS);
+		for (const { reels } of view.spins) {
+			expect(reels).toHaveLength(3);
+			for (const reel of reels) expect(reel).toHaveLength(3);
+		}
+	});
+
+	it('splits the stake over five spins and pays the sum of them', () => {
+		setSeed(2024);
+		for (let i = 0; i < 300; i++) {
+			const out = slots.apply(slots.init(wager, STAKE, 1e6).state, { type: 'SPIN' });
+			const view = out.view as Extract<typeof out.view, { game: 'slots' }>;
+			expect(view.perSpin).toBe(STAKE / SLOT_SPINS);
+			const paid = view.spins.reduce((sum, s) => sum + s.win, 0);
+			expect(view.total).toBeCloseTo(paid / SLOT_SPINS, 9);
+			expect(out.outcome!.stake).toBe(STAKE);
+			expect(out.outcome!.returned).toBe(Math.round(view.perSpin * paid));
+		}
+	});
+
+	it('shows no spins before the SPIN', () => {
+		const view = slots.init(wager, STAKE, STAKE * 10).view as Extract<GameView, { game: 'slots' }>;
+		expect(view.spins).toEqual([]);
+		expect(view.perSpin).toBe(STAKE / SLOT_SPINS);
 	});
 
 	it('reports winning lines that actually match the reels', () => {
@@ -241,12 +264,14 @@ describe('slots round', () => {
 		for (let i = 0; i < 300; i++) {
 			const out = slots.apply(slots.init(wager, STAKE, 1e6).state, { type: 'SPIN' });
 			const view = out.view as Extract<typeof out.view, { game: 'slots' }>;
-			for (const row of view.lines) {
-				const symbols = view.reels.map((reel) => SLOT_SYMBOLS[reel[row]!]);
-				expect(symbols[0]).toBe(symbols[1]);
-				expect(symbols[1]).toBe(symbols[2]);
+			for (const spin of view.spins) {
+				for (const row of spin.lines) {
+					const symbols = spin.reels.map((reel) => SLOT_SYMBOLS[reel[row]!]);
+					expect(symbols[0]).toBe(symbols[1]);
+					expect(symbols[1]).toBe(symbols[2]);
+				}
+				expect(spin.lines).toHaveLength(new Set(spin.lines).size);
 			}
-			expect(view.lines).toHaveLength(new Set(view.lines).size);
 		}
 	});
 });

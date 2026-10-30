@@ -6,12 +6,14 @@
  * over comes from `view.resolved`, which the server sets — never inferred here.
  */
 
-import { useEffect, useState } from 'react';
-import { colorOf, SLOT_LINES, SLOT_SYMBOLS } from '../../shared/games';
+import { useState } from 'react';
+import { colorOf, SLOT_LINES, SLOT_SPINS, SLOT_SYMBOLS } from '../../shared/games';
 import type { Action, CardView, GameId, GameView, HandView, PaiGowSplit } from '../../shared/protocol';
 import { DEAL_MS, handDoneMs } from '../lib/dealTiming';
 import { useRevealed } from '../lib/useRevealed';
-import { Actions, Die, Note, prefersReducedMotion, useRollOnMount, useTick } from './boardKit';
+import { Actions, Die, Note, prefersReducedMotion, useClock, useRollOnMount, useTick } from './boardKit';
+import { formatChips } from '../lib/format';
+import { SLOT_REEL_STOPS, SLOT_SPIN_MS, slotsEnd } from '../lib/slotsTimeline';
 import { Hand, PlayingCard } from './PlayingCard';
 import { MegaSlotsBoard } from './MegaSlots';
 import { CrapsBoard } from './Craps';
@@ -423,28 +425,35 @@ function DiceBoard({ view, busy, onAction, animate }: BoardOf<'dice'>) {
 // Slots
 // ---------------------------------------------------------------------------
 
-/** When each reel comes to rest on the result screen, in ms; left to right. */
-const REEL_STOPS = [700, 1100, 1500];
+/** The resting window of an unspun machine. */
+const IDLE_REELS = [0, 1, 2].map(() => [0, 1, 2]);
 
 function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
-	const reduced = prefersReducedMotion();
-	const [stopped, setStopped] = useState(() => (animate && view.resolved && !reduced ? 0 : REEL_STOPS.length));
+	// The result screen plays the spins one after another; anywhere else shows them as they stand.
+	const staged = !!animate && view.resolved && !prefersReducedMotion();
+	const end = slotsEnd(view.spins.length);
+	const clock = useClock(staged);
+	const t = staged ? Math.min(clock, end) : end;
+	const index = Math.max(0, Math.min(view.spins.length - 1, Math.floor(t / SLOT_SPIN_MS)));
+	const local = t - index * SLOT_SPIN_MS;
+	const stopped = SLOT_REEL_STOPS.filter((ms) => local >= ms).length;
+	const landed = view.resolved && stopped >= SLOT_REEL_STOPS.length;
+	const done = landed && index === view.spins.length - 1;
 
-	// Reels come to rest one after another, so the last one is the suspense.
-	useEffect(() => {
-		if (stopped >= REEL_STOPS.length) return;
-		const timers = REEL_STOPS.map((ms, i) => setTimeout(() => setStopped(i + 1), ms));
-		return () => timers.forEach(clearTimeout);
-	}, []); // eslint-disable-line react-hooks/exhaustive-deps
+	const spin = view.spins[index];
+	const spinningReel = (reel: number) => (busy && !view.resolved) || (view.resolved && reel >= stopped);
+	const tick = useTick(busy || (view.resolved && !landed), 80);
 
-	const spinningReel = (reel: number) => busy || reel >= stopped;
-	const tick = useTick(busy || stopped < REEL_STOPS.length, 80);
-	const done = !busy && stopped >= REEL_STOPS.length;
+	// Spins whose reels have all stopped, and what they returned so far (in multiples of one spin's bet).
+	const finished = view.spins.filter((_, i) => i < index || (i === index && landed));
+	const earned = finished.reduce((sum, s) => sum + s.win, 0);
+	const earnedChips = done ? Math.round(view.perSpin * SLOT_SPINS * view.total) : Math.round(view.perSpin * earned);
+	const winningSpins = view.spins.filter((s) => s.win > 0).length;
 
 	return (
 		<div className="board">
 			<div className="reels">
-				{view.reels.map((reel, reelIndex) => {
+				{(spin?.reels ?? IDLE_REELS).map((reel, reelIndex) => {
 					const spinning = spinningReel(reelIndex);
 					return (
 						<div key={reelIndex} className={`reel${spinning ? ' reel--spinning' : ''}`}>
@@ -454,7 +463,7 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 									? (tick * 7 + reelIndex * 5 + rowIndex * 3) % SLOT_SYMBOLS.length
 									: symbolIndex;
 								const symbol = SLOT_SYMBOLS[shown] ?? 'cherry';
-								const isWin = view.resolved && done && view.lines.includes(rowIndex);
+								const isWin = landed && !!spin?.lines.includes(rowIndex);
 								return (
 									<div key={rowIndex} className={`reel__cell${isWin ? ' reel__cell--win' : ''}`}>
 										<SlotIcon symbol={symbol} size="2.1rem" />
@@ -466,17 +475,54 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 				})}
 			</div>
 
-			{view.resolved && done ? (
-				view.win > 0 ? (
+			<div className="slots__meta">
+				<span className="slots__pips" role="img" aria-label={`Spin ${index + 1} of ${SLOT_SPINS}`}>
+					{Array.from({ length: SLOT_SPINS }, (_, i) => {
+						const result = view.spins[i];
+						const over = !!result && (i < index || (i === index && landed));
+						return (
+							<span
+								key={i}
+								className={`slots__pip${over ? (result.win > 0 ? ' slots__pip--won' : ' slots__pip--lost') : view.resolved && i === index ? ' slots__pip--now' : ''}`}
+							/>
+						);
+					})}
+				</span>
+				{view.resolved ? (
+					<span className="slots__won">
+						<span className="board__label">Won</span> {formatChips(earnedChips)}
+					</span>
+				) : null}
+			</div>
+
+			{view.resolved ? (
+				done ? (
 					<p className="board__caption">
-						{/* `win` is a return multiple of the whole stake, so profit is one less. */}
-						{view.lines.map((row) => SLOT_LINES[row]).join(' and ')} line pays{' '}
-						<strong className="board__caption-value">{view.win - 1}:1</strong>
+						{winningSpins > 0 ? (
+							<>
+								{winningSpins} of {SLOT_SPINS} spins paid · returned{' '}
+								<strong className="board__caption-value">{formatTimes(view.total)}</strong> your stake
+							</>
+						) : (
+							`No winning lines in ${SLOT_SPINS} spins`
+						)}
 					</p>
+				) : landed && spin ? (
+					spin.win > 0 ? (
+						<p className="board__caption">
+							{/* `win` is a return multiple of the spin's bet, so profit is one less. */}
+							{spin.lines.map((row) => SLOT_LINES[row]).join(' and ')} line pays{' '}
+							<strong className="board__caption-value">{spin.win - 1}:1</strong>
+						</p>
+					) : (
+						<p className="board__caption">No winning lines</p>
+					)
 				) : (
-					<p className="board__caption">No winning lines</p>
+					<p className="board__caption">Spin {index + 1} of {SLOT_SPINS}…</p>
 				)
-			) : null}
+			) : (
+				<p className="board__caption">{busy ? 'Good luck!' : `${SLOT_SPINS} spins at ${formatChips(view.perSpin)} each`}</p>
+			)}
 
 			<Actions>
 				<button
@@ -485,7 +531,7 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 					disabled={busy || view.resolved}
 					onClick={() => onAction({ type: 'SPIN' })}
 				>
-					{view.resolved ? 'Spun' : 'Spin'}
+					{view.resolved ? 'Spun' : `Spin ×${SLOT_SPINS}`}
 				</button>
 			</Actions>
 
@@ -493,6 +539,9 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 		</div>
 	);
 }
+
+/** 2 or 0.4 or 12.5, then ×. */
+const formatTimes = (ratio: number): string => `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(2).replace(/\.?0+$/, '')}×`;
 
 // ---------------------------------------------------------------------------
 // Three Card Poker

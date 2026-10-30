@@ -30,6 +30,7 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - `worker/stats.ts` — personal stats, summarized from `run_results` (one row per finished run, per session)
 - `worker/daily.ts` — `GET /api/daily`: today's ranked runs compared (everyone ranked gets the same games and outcomes); aggregates only, never another player's run
 - `shared/protocol.ts` — shared API/game types and run model
+- `src/components/Practice.tsx` — staging's practice menu / bar (see "Staging")
 - `shared/games.ts` — shared constants/paytables/ranges
 - `src/components/*` — rendering only; must not invent game state
 
@@ -74,9 +75,10 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - Roll is 2d6 (total 2-12); win rule is `total <= target`, priced from exact combination counts.
 - Target bounds from `shared/games.ts`.
 
-### Slots
-- Board is 3 reels × 3 rows.
-- Paylines: top/middle/bottom row matches only.
+### Slots and Mega Slots
+- A round is five spins (`SLOT_SPINS`), all dealt by the one `SPIN` (so the round is still a single roll for the daily seed). The player picks the bet **per spin** on the bet screen; the engine's stake is five times it, so a slot stake is always a multiple of five (`fitStake`/`slotStake`: rounded down, at least 5, which is also why `canPlay` needs 5 chips). Double or Nothing offers a multiple of five too. The return is the sum of the spins divided by five, rounded once; the per-chip RTP is unchanged (`test/slots.test.ts`, `test/megaslots.test.ts`).
+- Slots: board is 3 reels × 3 rows; paylines: top/middle/bottom row matches only. Mega Slots: each of the five paid spins carries its own free spins.
+- The view is `spins` (slots) / `rounds` (Mega Slots) plus `perSpin` and `total`; the boards play the spins one after another from `lib/slotsTimeline.ts` / `lib/megaTimeline.ts`, which `lib/reveal.ts` also reads.
 
 ### Three Card Poker
 - Ante controls main stake; play bet matches ante.
@@ -99,6 +101,13 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - Ranked-ness is decided by the atomic `recordRunStart` count before the run is built.
 
 ---
+
+## 4b) Staging (https://gamba-stg.0x9.ca)
+
+- A separate Worker (`gambadle-staging`), D1 database (`gambadle-staging`) and `SESSION_SECRET`, defined as `env.staging` in `wrangler.jsonc` (`STAGING=1`). Production data is never touched.
+- It plays **practice runs**: `START_TEST {game}` (refused with 403 unless `STAGING`) starts a run with `run.testGame`, 1000 chips, no seed, not eligible. The engine keeps queuing that one game, has no last round (it ends only when the stack can't open the game) and keeps just the newest board in `history`. "Reset" is `START_TEST` again, "Change game" is `ABANDON`.
+- No ranking, stats or leaderboard: `/api/leaderboard`, `/api/stats`, `/api/daily` and `SUBMIT_NAME` answer 404, no run result is recorded, and the client (`RunView.staging`) hides those panels and the round pips.
+- `./deploy-staging.sh` builds with `CLOUDFLARE_ENV=staging` and deploys. `npm run test:e2e:staging` plays a round of every game against a local staging build.
 
 ## 5) Style / Conventions
 
@@ -129,6 +138,10 @@ npm run test:e2e
 
 # deploy (typecheck, tests, build, D1 migrations, deploy)
 ./deploy.sh
+
+# staging site (practice mode); same steps, own Worker and database
+./deploy-staging.sh
+npm run test:e2e:staging
 ```
 
 If modifying game math/state transitions, run full tests, not a subset.
@@ -150,7 +163,7 @@ When changing payouts/rules, update tests to match explicit product decisions; d
 
 - Wrangler deploy uses redirected config from `.wrangler/deploy/config.json`.
 - Assets are built from `dist/client`.
-- Worker route is custom domain `gamba.0x9.ca`.
+- Worker route is custom domain `gamba.0x9.ca` (staging: `gamba-stg.0x9.ca`).
 
 ---
 

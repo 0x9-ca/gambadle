@@ -30,7 +30,15 @@ function maxStakeFor(game: GameId, chips: number): number {
 	if (game === 'threecard') return Math.floor(chips / 2);
 	if (game === 'ultimate') return Math.floor(chips / 6);
 	if (game === 'craps') return Math.floor(chips / 3);
+	// The slot machines stake whole chips on each of their five spins.
+	if (game === 'slots' || game === 'megaslots') return Math.floor(chips / 5) * 5;
 	return chips;
+}
+
+/** A wished-for stake as the engine fits it: within the stack, and a multiple of five for the slots. */
+function fitStakeFor(game: GameId, wanted: number, chips: number): number {
+	const stake = Math.min(wanted, maxStakeFor(game, chips));
+	return game === 'slots' || game === 'megaslots' ? Math.max(5, Math.floor(stake / 5) * 5) : stake;
 }
 
 /** Chips must always equal the opening stack plus everything won and lost. */
@@ -164,7 +172,9 @@ describe('beginning a round', () => {
 	});
 
 	it('accepts an all-in and a one-chip bet', () => {
-		expect(applyAction(initialRunState(), { type: 'BEGIN_ROUND', bet: 1 }).current!.bet).toBe(1);
+		const one = applyAction(initialRunState(), { type: 'BEGIN_ROUND', bet: 1 }).current!;
+		// A slot machine cannot stake less than a chip on each of its five spins.
+		expect(one.bet).toBe(one.game === 'slots' || one.game === 'megaslots' ? 5 : 1);
 		const allIn = applyAction(initialRunState(), { type: 'BEGIN_ROUND', bet: STARTING_CHIPS }).current!;
 		expect(allIn.bet).toBe(maxStakeFor(allIn.game, STARTING_CHIPS));
 	});
@@ -416,7 +426,7 @@ describe('double or nothing', () => {
 		expect(doubled.current!.game).toBe(game);
 		// Everything the last game paid back goes out: bet 100, win 100, risk 200.
 		const paidBack = offer.history[offer.history.length - 1]!.returned;
-		expect(offer.current!.bet).toBe(Math.min(paidBack, maxStakeFor(game, stack)));
+		expect(offer.current!.bet).toBe(Math.max(1, fitStakeFor(game, paidBack, stack)));
 		expect(doubled.current!.bet).toBe(offer.current!.bet);
 		expect(doubled.current!.doubles).toBe(1);
 		expect(doubled.current!.wager.game).toBe(game);
@@ -599,5 +609,137 @@ describe('daily seed', () => {
 		expect(last.deals.slice(0, n)).toEqual(first.deals.slice(0, n));
 		const m = Math.min(first.rolls.length, last.rolls.length);
 		expect(last.rolls.slice(0, m)).toEqual(first.rolls.slice(0, m));
+	});
+});
+
+describe('slot stakes', () => {
+	const begin = (game: GameId, bet: number, chips = STARTING_CHIPS) => {
+		const run = initialRunState();
+		run.chips = chips;
+		run.upcoming = game;
+		return applyAction(run, { type: 'BEGIN_ROUND', bet }).current!.bet;
+	};
+
+	it('stakes whole chips on each of the five spins', () => {
+		for (const game of ['slots', 'megaslots'] as const) {
+			expect(begin(game, 50)).toBe(50);
+			// Rounded down to a multiple of five, and never below five.
+			expect(begin(game, 53)).toBe(50);
+			expect(begin(game, 3)).toBe(5);
+			expect(begin(game, STARTING_CHIPS)).toBe(STARTING_CHIPS);
+			// An all-in with a stack that is not a multiple of five keeps the remainder back.
+			expect(begin(game, 103, 103)).toBe(100);
+		}
+	});
+
+	it('is left out of the draw when the stack cannot cover five chips', () => {
+		for (let i = 0; i < 50; i++) expect(['slots', 'megaslots']).not.toContain(chooseGame([], 4));
+	});
+
+	it('offers a double at a multiple of five', () => {
+		setSeed(11);
+		let seen = 0;
+		for (let i = 0; i < 300 && seen < 5; i++) {
+			for (const game of ['slots', 'megaslots'] as const) {
+				let run = initialRunState();
+				run.upcoming = game;
+				run = applyAction(run, { type: 'BEGIN_ROUND', bet: 50 });
+				run = applyAction(run, { type: 'WAGER', wager: run.current!.wager });
+				run = applyAction(run, { type: 'SPIN' });
+				if (run.phase !== 'don_offer') continue;
+				seen++;
+				expect(run.current!.bet % 5).toBe(0);
+				expect(run.current!.bet).toBeGreaterThanOrEqual(5);
+				const offered = run.current!.bet;
+				const doubled = applyAction(applyAction(run, { type: 'DON_ACCEPT' }), { type: 'SPIN' });
+				expect(doubled.history).toHaveLength(2);
+				expect(doubled.history[1]!.bet).toBe(offered);
+			}
+		}
+		expect(seen).toBeGreaterThan(0);
+	});
+});
+
+describe('practice runs (staging)', () => {
+	const start = (game: GameId) => applyAction(null, { type: 'START_TEST', game });
+
+	it('starts on one game with a full stack, unranked and unseeded', () => {
+		for (const game of GAME_IDS) {
+			const run = start(game);
+			expect(run.chips).toBe(STARTING_CHIPS);
+			expect(run.testGame).toBe(game);
+			expect(run.upcoming).toBe(game);
+			expect(run.eligible).toBe(false);
+			expect(run.seed).toBeNull();
+		}
+	});
+
+	it('rejects a game that does not exist', () => {
+		expect(() => applyAction(null, { type: 'START_TEST', game: 'nope' as GameId })).toThrow(GameError);
+	});
+
+	it('plays the same game round after round with no last round', () => {
+		setSeed(5);
+		let run = start('coinflip');
+		for (let round = 1; round <= 8 && run.phase !== 'finished'; round++) {
+			expect(run.phase).toBe('betting');
+			expect(run.upcoming).toBe('coinflip');
+			run = applyAction(run, { type: 'BEGIN_ROUND', bet: 1 });
+			run = applyAction(run, { type: 'WAGER', wager: run.current!.wager });
+			run = applyAction(run, { type: 'FLIP' });
+			if (run.phase === 'don_offer') run = applyAction(run, { type: 'DON_DECLINE' });
+		}
+		// More rounds than a real run has, and still going.
+		expect(run.history.length).toBe(8);
+		expect(run.round).toBeGreaterThan(5);
+		expect(run.phase).not.toBe('finished');
+		expect(run.history.every((entry) => entry.game === 'coinflip')).toBe(true);
+	});
+
+	it('ends only when the stack goes, then starts over at 1000 with START_TEST', () => {
+		setSeed(9);
+		let run = start('coinflip');
+		for (let guard = 0; guard < 200 && run.phase !== 'finished'; guard++) {
+			run = applyAction(run, { type: 'BEGIN_ROUND', bet: run.chips });
+			run = applyAction(run, { type: 'WAGER', wager: run.current!.wager });
+			run = applyAction(run, { type: 'FLIP' });
+			if (run.phase === 'don_offer') run = applyAction(run, { type: 'DON_DECLINE' });
+		}
+		expect(run.phase).toBe('finished');
+		expect(run.endedBy).toBe('bust');
+		expect(run.chips).toBe(0);
+		expect(start('coinflip').chips).toBe(STARTING_CHIPS);
+	});
+
+	it('keeps only the latest board in the history', () => {
+		setSeed(3);
+		let run = start('dice');
+		for (let i = 0; i < 4 && run.phase !== 'finished'; i++) {
+			run = applyAction(run, { type: 'BEGIN_ROUND', bet: 1 });
+			run = applyAction(run, { type: 'WAGER', wager: run.current!.wager });
+			run = applyAction(run, { type: 'ROLL' });
+			if (run.phase === 'don_offer') run = applyAction(run, { type: 'DON_DECLINE' });
+		}
+		expect(run.history.slice(0, -1).every((entry) => entry.view === null)).toBe(true);
+		expect(run.history[run.history.length - 1]!.view).not.toBeNull();
+	});
+
+	it('ends a run whose stack can no longer open the game', () => {
+		// A slot machine needs five chips for its five spins. Lose a round from
+		// seven and the two left cannot play it, though they are not nothing.
+		let checked = false;
+		for (let seed = 1; seed <= 100 && !checked; seed++) {
+			setSeed(seed);
+			let run = start('slots');
+			run.chips = 7;
+			run = applyAction(run, { type: 'BEGIN_ROUND', bet: 5 });
+			run = applyAction(run, { type: 'WAGER', wager: run.current!.wager });
+			run = applyAction(run, { type: 'SPIN' });
+			if (run.chips !== 2) continue;
+			checked = true;
+			expect(run.phase).toBe('finished');
+			expect(run.endedBy).toBe('bust');
+		}
+		expect(checked).toBe(true);
 	});
 });

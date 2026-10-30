@@ -8,7 +8,8 @@
 
 import type { GameId, RoundResult } from '../../shared/protocol';
 import { handDoneMs } from './dealTiming';
-import { BASE_DONE, megaEnd } from './megaTimeline';
+import { BASE_DONE, sequenceEnd } from './megaTimeline';
+import { slotsEnd } from './slotsTimeline';
 
 const REVEAL_SECONDS: Record<GameId, number> = {
 	blackjack: 1.4,
@@ -28,8 +29,10 @@ const REVEAL_SECONDS: Record<GameId, number> = {
 
 export function revealSeconds(result: RoundResult | null): number {
 	if (!result?.view) return 0;
-	// Mega Slots plays its free spins on the result board, so it takes as long as they do.
-	if (result.view.game === 'megaslots') return megaEnd(result.view.free.length) / 1000 + 0.2;
+	// Both slot machines play every spin of the round on the result board, and Mega
+	// Slots its free spins too, so they take as long as those do.
+	if (result.view.game === 'megaslots') return sequenceEnd(result.view.rounds.map((r) => r.free.length)) / 1000 + 0.2;
+	if (result.view.game === 'slots') return slotsEnd(result.view.spins.length) / 1000 + 0.2;
 	// Blackjack's dealer may turn a card and then draw several, which takes as long as it takes.
 	if (result.view.game === 'blackjack') {
 		const seen = !result.view.opening;

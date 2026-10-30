@@ -22,7 +22,7 @@
  * asks for the next phase, which keeps the "what happened" beat readable.
  */
 
-import { CRAPS_MAX_ODDS, UTH_MAX_ANTES } from '../shared/games';
+import { CRAPS_MAX_ODDS, SLOT_SPINS, UTH_MAX_ANTES, slotStake } from '../shared/games';
 import {
 	type Action,
 	GAME_IDS,
@@ -84,6 +84,9 @@ function draw<T>(run: RunState, label: string, fn: () => T): T {
  * needs a Blind and room for a 4x raise, so its ante is at most a sixth, and
  * craps keeps room for the most free odds, so its line bet is at most a third.
  *
+ * Both slot machines split the stake over five spins of whole chips, so their
+ * stake is a multiple of five.
+ *
  * The TriLux and Trips side bets are optional and checked like baccarat's.
  *
  * A baccarat pair side bet is optional and defaults off, so it is left out here
@@ -93,12 +96,24 @@ function maxStake(game: GameId, chips: number): number {
 	if (game === 'threecard') return Math.floor(chips / 2);
 	if (game === 'ultimate') return Math.floor(chips / UTH_MAX_ANTES);
 	if (game === 'craps') return Math.floor(chips / (1 + CRAPS_MAX_ODDS));
+	if (isSlotGame(game)) return Math.floor(chips / SLOT_SPINS) * SLOT_SPINS;
 	return chips;
+}
+
+const isSlotGame = (game: GameId): boolean => game === 'slots' || game === 'megaslots';
+
+/** The least a game can be played for: one chip, or one a spin for the slots. */
+const minStake = (game: GameId): number => (isSlotGame(game) ? SLOT_SPINS : 1);
+
+/** Fits a wished-for stake to what the game can take: within the stack, and whole chips per spin for the slots. */
+function fitStake(game: GameId, wanted: number, chips: number): number {
+	const stake = Math.min(wanted, maxStake(game, chips));
+	return isSlotGame(game) ? slotStake(stake) : stake;
 }
 
 /** Whether a game can commit anything at all with this stack. */
 function canPlay(game: GameId, chips: number): boolean {
-	return maxStake(game, chips) >= 1;
+	return maxStake(game, chips) >= minStake(game);
 }
 
 /**
@@ -198,8 +213,29 @@ export function chooseGame(played: readonly GameId[], chips?: number): GameId {
 
 /** Draws the game for the coming round so the bet screen can name it. */
 function queueNextGame(run: RunState): void {
+	run.upcoming = nextGame(run);
+}
+
+function nextGame(run: RunState): GameId {
+	// A practice run plays its one game over and over.
+	if (run.testGame) return run.testGame;
 	// Keyed by round alone: the pool is fixed by the (seeded) games already played.
-	run.upcoming = draw(run, `game:${run.round}`, () => chooseGame(run.played, run.chips));
+	return draw(run, `game:${run.round}`, () => chooseGame(run.played, run.chips));
+}
+
+/**
+ * Moves on to the next round with a bet to place. A practice run whose stack
+ * can no longer open its game (craps needs three chips, say) is over instead.
+ */
+function startNextRound(run: RunState): void {
+	run.round += 1;
+	if (run.testGame && !canPlay(run.testGame, run.chips)) {
+		run.phase = 'finished';
+		run.endedBy = 'bust';
+		return;
+	}
+	run.phase = 'betting';
+	queueNextGame(run);
 }
 
 /** The wager a game starts on when the player accepts the default. */
@@ -259,6 +295,16 @@ export function applyAction(
 }
 
 function applyActionUnsalted(run: RunState | null, action: Action, seed: string | null): RunState {
+	if (action.type === 'START_TEST') {
+		if (!GAME_IDS.includes(action.game)) throw new GameError('invalid_action', 'unknown game');
+		// Unseeded and never ranked: a practice run is nobody's daily run.
+		const fresh = initialRunState();
+		fresh.testGame = action.game;
+		fresh.eligible = false;
+		queueNextGame(fresh);
+		return fresh;
+	}
+
 	if (action.type === 'START') {
 		// Starting over mid-run is allowed and silently discards the old one.
 		// `seed` is only passed for a ranked run; see RunState.seed.
@@ -313,12 +359,12 @@ function beginRound(run: RunState, bet: number): RunState {
 	}
 
 	// Runs saved before `upcoming` existed have none queued, so draw now.
-	const game = run.upcoming ?? draw(run, `game:${run.round}`, () => chooseGame(run.played, run.chips));
+	const game = run.upcoming ?? nextGame(run);
 	run.upcoming = null;
 	// Three card poker needs a matching Play bet, so an all-in round antes half
 	// the stack (a sixth for Ultimate Texas Hold'em). The wager screen shows the real ante before the player commits,
 	// so the reduction is visible rather than a surprise.
-	const stake = Math.min(bet, maxStake(game, run.chips));
+	const stake = fitStake(game, bet, run.chips);
 	run.current = {
 		game,
 		bet: stake,
@@ -422,8 +468,11 @@ function settleRound(
 		view: current.view,
 	});
 
+	if (run.testGame) trimPracticeHistory(run);
+
 	const won = outcome.returned > outcome.stake;
-	const lastRound = run.round >= TOTAL_ROUNDS;
+	// A practice run has no last round; it goes on until the stack runs out.
+	const lastRound = run.round >= TOTAL_ROUNDS && !run.testGame;
 
 	if (run.chips === 0) {
 		run.current = null;
@@ -442,7 +491,7 @@ function settleRound(
 		run.current = {
 			game: current.game,
 			wager: current.wager,
-			bet: Math.max(1, Math.min(outcome.returned, maxStake(current.game, run.chips))),
+			bet: Math.max(minStake(current.game), fitStake(current.game, outcome.returned, run.chips)),
 			doubles: current.doubles,
 			state: null,
 			view: current.view,
@@ -450,10 +499,17 @@ function settleRound(
 		run.phase = 'don_offer';
 	} else {
 		run.current = null;
-		run.phase = 'betting';
-		run.round += 1;
-		queueNextGame(run);
+		startNextRound(run);
 	}
+}
+
+/**
+ * A practice run has no end to bound its history, and every entry holds a
+ * finished board, so only the latest board is kept and the list is capped.
+ */
+function trimPracticeHistory(run: RunState): void {
+	for (const entry of run.history.slice(0, -1)) entry.view = null;
+	if (run.history.length > 500) run.history.splice(0, run.history.length - 500);
 }
 
 // ---------------------------------------------------------------------------
@@ -476,7 +532,7 @@ function acceptDouble(run: RunState): RunState {
 	const handler = gameById(game);
 	// `settleRound` already set `bet` to the amount on offer (the last payout,
 	// capped to what the game can commit), so a chain keeps compounding it.
-	const stake = Math.max(1, Math.min(run.current.bet, maxStake(game, run.chips)));
+	const stake = Math.max(minStake(game), fitStake(game, run.current.bet, run.chips));
 
 	// The stack is what bounds the wager, so it is passed as the available
 	// stack to both validation and init.
@@ -505,9 +561,7 @@ function declineDouble(run: RunState): RunState {
 		throw new GameError('illegal_action', 'no double or nothing on offer');
 	}
 	run.current = null;
-	run.phase = 'betting';
-	run.round += 1;
-	queueNextGame(run);
+	startNextRound(run);
 	return run;
 }
 

@@ -9,18 +9,22 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { SLOT_SPINS } from '../../shared/games';
 import {
 	MEGA_FREE_MULTIPLIER,
 	MEGA_FREE_SPINS,
 	MEGA_LINES,
 	MEGA_PAYS,
+	MEGA_ROWS,
 	MEGA_SCATTER_PAYS,
+	MEGA_STRIPS,
 	MEGA_SYMBOLS,
 	type MegaSymbol,
 } from '../../shared/megaslots';
-import type { Action, GameView, MegaSpinView } from '../../shared/protocol';
+import type { Action, GameView, MegaRoundView, MegaSpinView } from '../../shared/protocol';
 import { formatChips } from '../lib/format';
-import { megaEnd, momentAt } from '../lib/megaTimeline';
+import { sequenceAt, sequenceEnd } from '../lib/megaTimeline';
+import { useClock } from './boardKit';
 import { MEGA_NAMES, MegaIcon } from './MegaIcon';
 
 type MegaView = Extract<GameView, { game: 'megaslots' }>;
@@ -30,21 +34,6 @@ const reducedMotion = (): boolean =>
 
 /** Line colours, cycled, so neighbouring lines read apart when traced. */
 const LINE_COLORS = ['#facc15', '#22d3ee', '#f472b6', '#4ade80', '#fb923c', '#a78bfa', '#f87171', '#60a5fa'];
-
-/** Milliseconds since mount while `running`, ticking at frame rate. */
-function useClock(running: boolean): number {
-	const [t, setT] = useState(0);
-	useEffect(() => {
-		if (!running) return;
-		const start = performance.now();
-		let frame = requestAnimationFrame(function tick(now) {
-			setT(now - start);
-			frame = requestAnimationFrame(tick);
-		});
-		return () => cancelAnimationFrame(frame);
-	}, [running]);
-	return t;
-}
 
 /** Counts up to `target` over `ms` whenever the target changes. */
 function useCountUp(target: number, ms = 700): number {
@@ -97,6 +86,18 @@ function Reel({ symbols, spinning, reel, highlight }: { symbols: MegaSymbol[]; s
 
 const symbolsOf = (spin: MegaSpinView): MegaSymbol[][] => spin.grid.map((reel) => reel.map((i) => MEGA_SYMBOLS[i] ?? 'ten'));
 
+/** The resting window of an unspun machine: the first stops of each strip. */
+const IDLE_ROUND: MegaRoundView = {
+	base: {
+		grid: MEGA_STRIPS.map((strip) => strip.slice(0, MEGA_ROWS).map((symbol) => MEGA_SYMBOLS.indexOf(symbol))),
+		hits: [],
+		scatters: 0,
+		win: 0,
+	},
+	free: [],
+	total: 0,
+};
+
 export function MegaSlotsBoard({
 	view,
 	busy,
@@ -112,13 +113,17 @@ export function MegaSlotsBoard({
 }) {
 	// The result screen stages the round; anywhere else shows it as it stands.
 	const staged = !!animate && view.resolved && !reducedMotion();
-	const end = megaEnd(view.free.length);
+	const freeCounts = useMemo(() => view.rounds.map((r) => r.free.length), [view.rounds]);
+	const end = sequenceEnd(freeCounts);
 	const clock = useClock(staged);
 	const t = staged ? Math.min(clock, end) : end;
-	const moment = momentAt(t, view.free.length);
-	const settled = view.resolved && moment.done;
+	const seq = sequenceAt(t, freeCounts);
+	const { moment } = seq;
+	const settled = view.resolved && seq.done;
 
-	const spin = moment.spin < 0 ? view.base : view.free[moment.spin]!;
+	// The paid spin being shown, and the free spin within it (-1 for the paid spin itself).
+	const round = view.rounds[seq.round] ?? IDLE_ROUND;
+	const spin = moment.spin < 0 ? round.base : round.free[moment.spin]!;
 	const grid = symbolsOf(spin);
 	// Before the result arrives (busy), every reel spins.
 	const spinning = (reel: number) => (busy && !view.resolved) || (view.resolved && reel >= moment.stopped);
@@ -132,7 +137,7 @@ export function MegaSlotsBoard({
 		if (hits.length < 2) return;
 		const timer = setInterval(() => setLineIndex((i) => i + 1), 900);
 		return () => clearInterval(timer);
-	}, [moment.spin, spinDone, hits.length]);
+	}, [seq.round, moment.spin, spinDone, hits.length]);
 	const active = hits.length > 0 ? hits[lineIndex % hits.length]! : null;
 	const highlight = useMemo(() => {
 		const cells = new Set<string>();
@@ -143,29 +148,35 @@ export function MegaSlotsBoard({
 		return cells;
 	}, [active, spinDone, spin]);
 
-	// Win so far: the base spin once landed, plus finished free spins at their multiplier.
-	const baseWin = view.resolved && (moment.spin >= 0 || moment.banner || moment.stopped === 5) ? view.base.win : 0;
-	const freeWin = view.free.slice(0, moment.freeDone).reduce((sum, s) => sum + s.win * MEGA_FREE_MULTIPLIER, 0);
-	const winMultiple = settled ? view.total : baseWin + freeWin;
-	const winChips = useCountUp(Math.round((stake ?? 0) * winMultiple));
+	// Win so far, in multiples of one spin's bet: the paid spins played out, plus
+	// the one on show (its base spin once landed, plus finished free spins at their multiplier).
+	const doneWin = view.rounds.slice(0, seq.roundsDone).reduce((sum, r) => sum + r.total, 0);
+	const inProgress = seq.roundsDone <= seq.round;
+	const baseLanded = view.resolved && (moment.spin >= 0 || moment.banner || moment.stopped === 5);
+	const partial = !inProgress ? 0 : (baseLanded ? round.base.win : 0) + round.free.slice(0, moment.freeDone).reduce((sum, s) => sum + s.win * MEGA_FREE_MULTIPLIER, 0);
+	const perSpin = view.perSpin;
+	const winChips = useCountUp(settled && stake !== undefined ? Math.round(stake * view.total) : Math.round(perSpin * (doneWin + partial)));
+	const winMultiple = settled ? view.total : (doneWin + partial) / SLOT_SPINS;
 	const tier = settled ? (view.total >= 25 ? 'mega' : view.total >= 10 ? 'big' : null) : null;
+	const bonusRounds = view.rounds.filter((r) => r.free.length > 0).length;
 
 	return (
 		<div className="board">
-			<div className={`mega${tier ? ` mega--${tier}` : ''}${view.free.length > 0 && moment.spin >= 0 ? ' mega--bonus' : ''}`}>
+			<div className={`mega${tier ? ` mega--${tier}` : ''}${round.free.length > 0 && moment.spin >= 0 ? ' mega--bonus' : ''}`}>
 				<div className="mega__marquee">
 					<span className="mega__lights" aria-hidden="true" />
 					<span className="mega__title">Mega Slots</span>
 					<span className="mega__sub">
+						{view.resolved ? `Spin ${seq.round + 1} of ${SLOT_SPINS} · ` : ''}
 						{moment.spin >= 0
-							? `Free spin ${moment.spin + 1} of ${view.free.length} · wins ×${MEGA_FREE_MULTIPLIER}`
+							? `free spin ${moment.spin + 1} of ${round.free.length} · wins ×${MEGA_FREE_MULTIPLIER}`
 							: `${MEGA_LINES.length} lines · free spins`}
 					</span>
 				</div>
 
 				<div className="mega__window">
 					{grid.map((symbols, reel) => (
-						<Reel key={`${moment.spin}-${reel}`} reel={reel} symbols={symbols} spinning={spinning(reel)} highlight={highlight} />
+						<Reel key={`${seq.round}-${moment.spin}-${reel}`} reel={reel} symbols={symbols} spinning={spinning(reel)} highlight={highlight} />
 					))}
 					{active ? (
 						<svg className="mega__lines" viewBox="0 0 5 5" preserveAspectRatio="none" aria-hidden="true">
@@ -177,7 +188,7 @@ export function MegaSlotsBoard({
 					) : null}
 					{moment.banner ? (
 						<div className="mega__banner">
-							<span className="mega__banner-big">{view.free.length} FREE SPINS</span>
+							<span className="mega__banner-big">{round.free.length} FREE SPINS</span>
 							<span>every win ×{MEGA_FREE_MULTIPLIER}</span>
 						</div>
 					) : null}
@@ -190,8 +201,8 @@ export function MegaSlotsBoard({
 
 				<div className="mega__meter">
 					<span className="mega__caption">
-						{settled && view.free.length > 0
-							? `Bonus total: ${view.total >= 10 ? Math.round(view.total) : view.total.toFixed(1)}× your bet`
+						{settled && bonusRounds > 0
+							? `${bonusRounds} bonus${bonusRounds === 1 ? '' : 'es'}: ${view.total >= 10 ? Math.round(view.total) : view.total.toFixed(1)}× your stake in all`
 							: active
 								? `Line ${active.line + 1}: ${active.count} × ${MEGA_NAMES[MEGA_SYMBOLS[active.symbol] ?? 'ten']} pays ${active.pay}`
 								: spinDone && spin.scatters >= 3
@@ -202,7 +213,7 @@ export function MegaSlotsBoard({
 											: 'No win'
 										: busy || view.resolved
 											? 'Good luck!'
-											: 'Press spin'}
+											: `Press spin: ${SLOT_SPINS} spins at ${formatChips(perSpin)} each`}
 					</span>
 					<span className="mega__win">
 						<span className="board__label">Win</span> {stake !== undefined ? formatChips(winChips) : `${winMultiple.toFixed(2)}×`}
@@ -217,7 +228,7 @@ export function MegaSlotsBoard({
 					disabled={busy || view.resolved}
 					onClick={() => onAction({ type: 'SPIN' })}
 				>
-					{view.resolved ? 'Spun' : 'Spin'}
+					{view.resolved ? 'Spun' : `Spin ×${SLOT_SPINS}`}
 				</button>
 			</div>
 
@@ -256,7 +267,7 @@ function MegaPaytable() {
 				</tbody>
 			</table>
 			<p className="faint">
-				Line pays are in line bets (your bet split across {MEGA_LINES.length} lines), left to right from the first
+				Each round is {SLOT_SPINS} spins at the bet per spin you choose. Line pays are in line bets (a spin's bet split across {MEGA_LINES.length} lines), left to right from the first
 				reel. Wild stands in for any symbol but the scatter. Scatters pay anywhere: 3 for {MEGA_SCATTER_PAYS[3]}×,
 				4 for {MEGA_SCATTER_PAYS[4]}×, 5 for {MEGA_SCATTER_PAYS[5]}× your bet, and 3 or more award {MEGA_FREE_SPINS} free
 				spins with every win ×{MEGA_FREE_MULTIPLIER}. Returns about 92% of every chip staked.

@@ -36,6 +36,21 @@ export function useTick(active: boolean, ms = 90): number {
 	return tick;
 }
 
+/** Milliseconds since mount while `running`, ticking at frame rate. */
+export function useClock(running: boolean): number {
+	const [t, setT] = useState(0);
+	useEffect(() => {
+		if (!running) return;
+		const start = performance.now();
+		let frame = requestAnimationFrame(function tick(now) {
+			setT(now - start);
+			frame = requestAnimationFrame(tick);
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [running]);
+	return t;
+}
+
 export function Actions({ children }: { children: ReactNode }) {
 	return <div className="btn-row">{children}</div>;
 }

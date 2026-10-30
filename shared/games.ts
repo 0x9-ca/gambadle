@@ -70,6 +70,16 @@ export function rollUnderMultiplier(target: number): number {
 // ---------------------------------------------------------------------------
 
 /**
+ * Both slot machines play this many spins per round, all dealt by the one SPIN.
+ * The player picks the bet per spin and the round's stake is that times this,
+ * so a stake is always a multiple of it (see `slotStake`).
+ */
+export const SLOT_SPINS = 5;
+
+/** Rounds a stake down to whole chips per spin, and up to one chip per spin at the least. */
+export const slotStake = (stake: number): number => Math.max(SLOT_SPINS, Math.floor(stake / SLOT_SPINS) * SLOT_SPINS);
+
+/**
  * Twelve symbols in four tiers.
  *
  * The count matters more than it looks. With only a handful of symbols on a

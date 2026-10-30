@@ -21,6 +21,7 @@ import {
 	MEGA_SYMBOLS,
 	type MegaSymbol,
 } from '../shared/megaslots';
+import { SLOT_SPINS } from '../shared/games';
 import type { GameView } from '../shared/protocol';
 import { exactReturn, lineHit, megaslots } from '../worker/games/megaslots';
 
@@ -86,7 +87,7 @@ describe('Mega Slots return', () => {
 
 	it('plays what the arithmetic says', { timeout: 120_000 }, () => {
 		const bet = 4000; // large, so whole-chip rounding is negligible
-		const rounds = 60_000;
+		const rounds = 12_000; // five spins each: the same 60,000 spins as before
 		let sum = 0;
 		let squares = 0;
 		for (let i = 0; i < rounds; i++) {
@@ -98,7 +99,7 @@ describe('Mega Slots return', () => {
 		const mean = sum / rounds;
 		const se = Math.sqrt((squares / rounds - mean * mean) / rounds);
 		const exact = exactReturn().total;
-		process.stdout.write(`Mega Slots sampled: ${(mean * 100).toFixed(2)}% ± ${(se * 100).toFixed(2)} over ${rounds} spins\n`);
+		process.stdout.write(`Mega Slots sampled: ${(mean * 100).toFixed(2)}% ± ${(se * 100).toFixed(2)} over ${rounds} rounds of ${SLOT_SPINS} spins\n`);
 		expect(Math.abs(mean - exact)).toBeLessThan(5 * se);
 	});
 });
@@ -115,32 +116,44 @@ describe('Mega Slots rounds', () => {
 		expect(() => megaslots.apply(done.state, { type: 'SPIN' })).toThrow();
 	});
 
-	it('pays the base spin plus every free spin at its multiplier, rounded once', () => {
+	it('pays every spin with its free spins at their multiplier, averaged over five and rounded once', () => {
 		let found = false;
-		for (let i = 0; i < 5000 && !found; i++) {
+		for (let i = 0; i < 2000; i++) {
 			const done = megaslots.apply(megaslots.init({ game: 'megaslots' }, 250, 1000).state, { type: 'SPIN' });
 			const view = done.view as V;
-			const total = view.base.win + view.free.reduce((sum, s) => sum + s.win * MEGA_FREE_MULTIPLIER, 0);
-			expect(view.total).toBeCloseTo(total, 9);
-			expect(done.outcome!.returned).toBe(Math.round(250 * total));
-			if (view.base.scatters >= 3) {
-				found = true;
-				expect(view.free).toHaveLength(MEGA_FREE_SPINS);
-				expect(done.outcome!.detail).toContain('free spins');
-			} else {
-				expect(view.free).toHaveLength(0);
+			expect(view.rounds).toHaveLength(SLOT_SPINS);
+			expect(view.perSpin).toBe(250 / SLOT_SPINS);
+			let sum = 0;
+			for (const round of view.rounds) {
+				const own = round.base.win + round.free.reduce((acc, s) => acc + s.win * MEGA_FREE_MULTIPLIER, 0);
+				expect(round.total).toBeCloseTo(own, 9);
+				sum += own;
+				// Free spins come only from three or more scatters on the paid spin.
+				expect(round.free).toHaveLength(round.base.scatters >= 3 ? MEGA_FREE_SPINS : 0);
+				if (round.free.length > 0) found = true;
 			}
+			expect(view.total).toBeCloseTo(sum / SLOT_SPINS, 9);
+			expect(done.outcome!.returned).toBe(Math.round(250 * (sum / SLOT_SPINS)));
+			if (view.rounds.some((r) => r.free.length > 0)) expect(done.outcome!.detail).toContain('free spins');
 		}
 		expect(found).toBe(true);
 	});
 
 	it('reports each hit with its line, run and pay', () => {
-		for (let i = 0; i < 200; i++) {
+		for (let i = 0; i < 100; i++) {
 			const view = megaslots.apply(megaslots.init({ game: 'megaslots' }, 100, 1000).state, { type: 'SPIN' }).view as V;
-			for (const hit of view.base.hits) {
-				const symbols = MEGA_LINES[hit.line]!.map((row, reel) => MEGA_SYMBOLS[view.base.grid[reel]![row]!]!);
-				expect(lineHit(symbols)).toEqual({ symbol: MEGA_SYMBOLS[hit.symbol], count: hit.count, pay: hit.pay });
+			for (const { base } of view.rounds) {
+				for (const hit of base.hits) {
+					const symbols = MEGA_LINES[hit.line]!.map((row, reel) => MEGA_SYMBOLS[base.grid[reel]![row]!]!);
+					expect(lineHit(symbols)).toEqual({ symbol: MEGA_SYMBOLS[hit.symbol], count: hit.count, pay: hit.pay });
+				}
 			}
 		}
+	});
+
+	it('shows no spins before the SPIN', () => {
+		const view = megaslots.init({ game: 'megaslots' }, 100, 1000).view as V;
+		expect(view.rounds).toEqual([]);
+		expect(view.perSpin).toBe(100 / SLOT_SPINS);
 	});
 });

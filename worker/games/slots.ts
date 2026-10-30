@@ -1,7 +1,14 @@
 /**
- * Slots — three reels, three rows, three paylines (top, middle, bottom).
+ * Slots — three reels, three rows, three paylines (top, middle, bottom), five
+ * spins to a round.
  *
- * Any payline showing three of a kind pays `SLOT_PAYTABLE[symbol]` times the
+ * The stake is split evenly over `SLOT_SPINS` spins (the player picks the bet
+ * per spin) and all five are dealt by the one SPIN, so the round stays a single
+ * roll for the daily seed. The round's return is the sum of the spins' returns,
+ * rounded once to whole chips, which leaves the machine's return per chip as
+ * it was for a single spin.
+ *
+ * On each spin, any payline showing three of a kind pays `SLOT_PAYTABLE[symbol]` times the
  * whole stake, and a losing spin returns nothing. The strips and paytable live
  * in shared/games.ts so the client renders the same table, and
  * `test/slots.test.ts` enumerates every reel window to measure the return — the
@@ -15,12 +22,13 @@
 import {
 	SLOT_LINES,
 	SLOT_PAYTABLE,
+	SLOT_SPINS,
 	SLOT_STOPS_PER_REEL,
 	SLOT_STRIPS,
 	SLOT_SYMBOLS,
 	type SlotSymbol,
 } from '../../shared/games';
-import type { Action, GameView, Wager } from '../../shared/protocol';
+import type { Action, GameView, SlotSpinView, Wager } from '../../shared/protocol';
 import { randomInt } from '../rng';
 import { GameError, type GameHandler, type Step } from './types';
 
@@ -42,13 +50,20 @@ interface ReelStop {
 	offset: number;
 }
 
-interface SlotsState {
-	bet: number;
-	reels: ReelStop[] | null;
+/** One stopped spin. */
+interface SpinResult {
+	reels: ReelStop[];
 	/** Row indices of winning paylines. */
 	winningRows: number[];
-	/** Total returned, as a multiple of the whole stake. */
-	returnMultiplier: number;
+	/** Returned, as a multiple of this spin's own bet. */
+	multiplier: number;
+	wins: LineWin[];
+}
+
+interface SlotsState {
+	bet: number;
+	/** Null until the SPIN; then one entry per spin. */
+	spins: SpinResult[] | null;
 }
 
 function spinReel(reel: number): ReelStop {
@@ -81,30 +96,58 @@ function evalLine(reels: ReelStop[], row: number): LineWin | null {
 	return null;
 }
 
-function view(s: SlotsState): GameView {
+function spinOnce(): SpinResult {
+	const reels: ReelStop[] = [];
+	for (let i = 0; i < REELS; i++) reels.push(spinReel(i));
+
+	const wins: LineWin[] = [];
+	for (let row = 0; row < ROWS; row++) {
+		const win = evalLine(reels, row);
+		if (win) wins.push(win);
+	}
+
+	// Every winning line pays the full table value, so two or three lines
+	// pay two or three times as much.
 	return {
-		game: 'slots',
-		resolved: s.reels !== null,
-		reels: (s.reels ?? [
-			{ rows: ['cherry', 'lemon', 'bell'], offset: 0 },
-			{ rows: ['cherry', 'lemon', 'bell'], offset: 0 },
-			{ rows: ['cherry', 'lemon', 'bell'], offset: 0 },
-		]).map((reel) =>
-			reel.rows.map((symbol) => SYMBOLS.indexOf(symbol))
-		),
-		lines: s.winningRows,
-		win: s.returnMultiplier,
+		reels,
+		winningRows: wins.map((win) => win.row),
+		multiplier: wins.reduce((sum, win) => sum + win.pay, 0),
+		wins,
 	};
 }
 
-function describeWins(wins: LineWin[], total: number): string {
-	if (wins.length === 0) return 'No paylines';
-	const names = wins.map((w) => `${w.symbol} on the ${rowName(w.row)} line`);
-	if (wins.length === 1) {
-		return `${names[0]} — ${wins[0]!.pay - 1}:1`;
-	}
-	return `${names.join(', ')} — ${total - 1}:1`;
+/** The round's return as a multiple of the whole stake. */
+const totalMultiple = (spins: readonly SpinResult[]): number =>
+	spins.reduce((sum, spin) => sum + spin.multiplier, 0) / SLOT_SPINS;
+
+function spinView(spin: SpinResult): SlotSpinView {
+	return {
+		reels: spin.reels.map((reel) => reel.rows.map((symbol) => SYMBOLS.indexOf(symbol))),
+		lines: spin.winningRows,
+		win: spin.multiplier,
+	};
 }
+
+function view(s: SlotsState): GameView {
+	return {
+		game: 'slots',
+		resolved: s.spins !== null,
+		spins: (s.spins ?? []).map(spinView),
+		perSpin: s.bet / SLOT_SPINS,
+		total: totalMultiple(s.spins ?? []),
+	};
+}
+
+function describeSpins(spins: readonly SpinResult[], returned: number, bet: number): string {
+	const winning = spins.filter((spin) => spin.wins.length > 0).length;
+	if (winning === 0) return `No paylines in ${SLOT_SPINS} spins`;
+	const best = spins.reduce((a, b) => (b.multiplier > a.multiplier ? b : a));
+	const top = best.wins.reduce((a, b) => (b.pay > a.pay ? b : a));
+	return `${winning} of ${SLOT_SPINS} spins paid, best ${top.symbol} on the ${rowName(top.row)} line — returned ${formatRatio(returned / bet)}× your stake`;
+}
+
+/** 2, 0.4 or 12.5 without trailing zeros. */
+const formatRatio = (ratio: number): string => ratio.toFixed(2).replace(/\.?0+$/, '');
 
 function rowName(row: number): string {
 	return SLOT_LINES[row] ?? `line ${row}`;
@@ -120,18 +163,13 @@ export const slots: GameHandler = {
 	},
 
 	init(_wager: Wager, bet: number): Step {
-		const state: SlotsState = {
-			bet,
-			reels: null,
-			winningRows: [],
-			returnMultiplier: 0,
-		};
+		const state: SlotsState = { bet, spins: null };
 		return { state, view: view(state), outcome: null };
 	},
 
 	legalActions(state: unknown): Array<'SPIN'> {
 		const s = state as SlotsState;
-		return s.reels === null ? ['SPIN'] : [];
+		return s.spins === null ? ['SPIN'] : [];
 	},
 
 	apply(state: unknown, action: Action): Step {
@@ -139,28 +177,12 @@ export const slots: GameHandler = {
 		if (action.type !== 'SPIN') {
 			throw new GameError('invalid_action', 'slots only accepts SPIN');
 		}
-		if (s.reels !== null) {
+		if (s.spins !== null) {
 			throw new GameError('illegal_action', 'these reels are already spinning');
 		}
 
-		const reels: ReelStop[] = [];
-		for (let i = 0; i < REELS; i++) reels.push(spinReel(i));
-
-		const wins: LineWin[] = [];
-		for (let row = 0; row < ROWS; row++) {
-			const win = evalLine(reels, row);
-			if (win) wins.push(win);
-		}
-
-		// Every winning line pays the full table value, so two or three lines
-		// pay two or three times as much.
-		const multiplier = wins.reduce((sum, win) => sum + win.pay, 0);
-
-		s.reels = reels;
-		s.winningRows = wins.map((win) => win.row);
-		s.returnMultiplier = multiplier;
-
-		const returned = Math.round(s.bet * multiplier);
+		s.spins = Array.from({ length: SLOT_SPINS }, spinOnce);
+		const returned = Math.round(s.bet * totalMultiple(s.spins));
 
 		return {
 			state: s,
@@ -168,7 +190,7 @@ export const slots: GameHandler = {
 			outcome: {
 				stake: s.bet,
 				returned,
-				detail: describeWins(wins, multiplier),
+				detail: describeSpins(s.spins, returned, s.bet),
 			},
 		};
 	},
