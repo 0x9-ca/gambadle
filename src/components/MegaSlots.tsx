@@ -204,7 +204,7 @@ export function MegaSlotsBoard({
 						{settled && bonusRounds > 0
 							? `${bonusRounds} bonus${bonusRounds === 1 ? '' : 'es'}: ${view.total >= 10 ? Math.round(view.total) : view.total.toFixed(1)}× your stake in all`
 							: active
-								? `Line ${active.line + 1}: ${active.count} × ${MEGA_NAMES[MEGA_SYMBOLS[active.symbol] ?? 'ten']} pays ${active.pay}`
+								? `Line ${active.line + 1}: ${active.count} × ${MEGA_NAMES[MEGA_SYMBOLS[active.symbol] ?? 'ten']} pays ${active.pay}× line bet`
 								: spinDone && spin.scatters >= 3
 									? `${spin.scatters} scatters${MEGA_SCATTER_PAYS[spin.scatters] ? ` pay ${MEGA_SCATTER_PAYS[spin.scatters]}× bet` : ''}`
 									: spinDone
@@ -213,7 +213,7 @@ export function MegaSlotsBoard({
 											: 'No win'
 										: busy || view.resolved
 											? 'Good luck!'
-											: `Press spin: ${SLOT_SPINS} spins at ${formatChips(perSpin)} each`}
+											: `Press spin: ${SLOT_SPINS} spins at ${formatChips(perSpin)} ${perSpin === 1 ? 'chip' : 'chips'} each`}
 					</span>
 					<span className="mega__win">
 						<span className="board__label">Win</span> {stake !== undefined ? formatChips(winChips) : `${winMultiple.toFixed(2)}×`}

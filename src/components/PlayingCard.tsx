@@ -50,7 +50,7 @@ export function PlayingCard({
 
 	if (faceDown || !card) {
 		return (
-			<div className={`card card--back${motionClass}`} style={style} aria-label="Face-down card">
+			<div className={`card card--back${motionClass}`} style={style} role="img" aria-label="Face-down card">
 				<span className="card__corner" />
 				<span className="card__pip">★</span>
 				<span className="card__corner" />
@@ -61,7 +61,7 @@ export function PlayingCard({
 	// Pai Gow's joker is the only card with rank 0.
 	if (card.rank === 0) {
 		return (
-			<div className={`card card--joker${motionClass}`} style={style} aria-label="Joker">
+			<div className={`card card--joker${motionClass}`} style={style} role="img" aria-label="Joker">
 				<span className="card__corner">JKR</span>
 				<span className="card__pip">★</span>
 				<span className="card__corner">JKR</span>
@@ -76,6 +76,8 @@ export function PlayingCard({
 		<div
 			className={`card${red ? ' card--red' : ''}${motionClass}`}
 			style={style}
+			// A label on a plain div is not announced; as an image the card reads as "Q♠".
+			role="img"
 			aria-label={label}
 			data-rank={RANK_TEXT[card.rank]}
 		>

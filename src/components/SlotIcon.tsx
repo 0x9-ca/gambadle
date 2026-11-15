@@ -130,9 +130,16 @@ const SHAPES: Record<SlotSymbol, ReactNode> = {
 	),
 };
 
-export function SlotIcon({ symbol, size = '1em' }: { symbol: SlotSymbol; size?: string }) {
+/** `decorative` hides the icon from screen readers where its name is written beside it. */
+export function SlotIcon({ symbol, size = '1em', decorative = false }: { symbol: SlotSymbol; size?: string; decorative?: boolean }) {
 	return (
-		<svg viewBox="0 0 40 40" width={size} height={size} role="img" aria-label={symbol} className="slot-icon">
+		<svg
+			viewBox="0 0 40 40"
+			width={size}
+			height={size}
+			className="slot-icon"
+			{...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': symbol })}
+		>
 			{SHAPES[symbol]}
 		</svg>
 	);

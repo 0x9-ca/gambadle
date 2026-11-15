@@ -37,6 +37,9 @@ import { lastSpread } from '../lib/lastWager';
 import { NumberField } from './NumberField';
 import { SlotIcon } from './SlotIcon';
 
+/** "1 chip", "25 chips", so a bet size is never read as a hand or dice total. */
+const chipCount = (n: number): string => `${formatChips(n)} ${n === 1 ? 'chip' : 'chips'}`;
+
 interface Props {
 	game: GameId;
 	wager: Wager;
@@ -157,6 +160,7 @@ function RoulettePicker({
 						key={value}
 						type="button"
 						className={`btn${chipSize === value ? ' btn--primary' : ' btn--ghost'}`}
+						aria-pressed={chipSize === value}
 						onClick={() => setChipSize(value)}
 					>
 						{value}
@@ -234,7 +238,7 @@ function RoulettePicker({
 						<button
 							key={n}
 							type="button"
-							aria-label={`Bet on ${n}`}
+							aria-label={`Bet on ${n}${amount > 0 ? `, ${chipCount(amount)} on it` : ''}`}
 							disabled={remaining < 1}
 							style={position}
 							className={[
@@ -257,7 +261,7 @@ function RoulettePicker({
 						<button
 							key={column}
 							type="button"
-							aria-label={`Bet on column ${column}, pays 2 to 1`}
+							aria-label={`Bet on column ${column}, pays 2 to 1${amount > 0 ? `, ${chipCount(amount)} on it` : ''}`}
 							disabled={remaining < 1}
 							style={{ '--hc': '14', '--hr': String(row + 1), '--vc': String(column), '--vr': '14' } as CSSProperties}
 							className={`roulette-cell roulette-cell--column${amount > 0 ? ' roulette-cell--on' : ''}`}
@@ -333,7 +337,7 @@ function BaccaratPicker({
 	return (
 		<div className="wager">
 			<p className="board__label" style={{ marginBottom: '0.35rem' }}>
-				Main bet — {bet}
+				Main bet — {chipCount(bet)}
 			</p>
 			<div className="choice-grid choice-grid--3">
 				{(
@@ -347,6 +351,7 @@ function BaccaratPicker({
 						key={option.main}
 						type="button"
 						className={`choice${main.main === option.main ? ' choice--on' : ''}`}
+						aria-pressed={main.main === option.main}
 						onClick={() => onChange({ game: 'baccarat', bet: { ...main, main: option.main } })}
 					>
 						{option.label}
@@ -356,7 +361,7 @@ function BaccaratPicker({
 			</div>
 
 			<p className="board__label" style={{ margin: '0.9rem 0 0.35rem' }}>
-				Pair side bet (optional){main.pair ? ` — ${pairAmount}` : ''}
+				Pair side bet (optional){main.pair ? ` — ${chipCount(pairAmount)}` : ''}
 			</p>
 			<div className="choice-grid choice-grid--4">
 				{(
@@ -371,6 +376,7 @@ function BaccaratPicker({
 						type="button"
 						disabled={!canPair}
 						className={`choice${main.pair === option.pair ? ' choice--on' : ''}`}
+						aria-pressed={main.pair === option.pair}
 						onClick={() => {
 							const next = { ...main };
 							if (main.pair === option.pair) {
@@ -396,6 +402,7 @@ function BaccaratPicker({
 						min={1}
 						max={maxPair}
 						step={1}
+						aria-label="Pair side bet chips"
 						value={pairAmount}
 						onChange={(event) =>
 							onChange({
@@ -432,6 +439,7 @@ function CoinFlipPicker({ wager, onChange }: { wager: Wager; onChange: (w: Wager
 					key={side}
 					type="button"
 					className={`choice${wager.bet.side === side ? ' choice--on' : ''}`}
+					aria-pressed={wager.bet.side === side}
 					onClick={() => onChange({ game: 'coinflip', bet: { side } })}
 				>
 					{side === 'heads' ? 'Heads' : 'Tails'}
@@ -452,7 +460,8 @@ function DicePicker({ wager, onChange }: { wager: Wager; onChange: (w: Wager) =>
 	return (
 		<div className="wager">
 			<p className="board__label" style={{ marginBottom: '0.35rem' }}>
-				Roll under — {target}
+				{/* The target itself wins (total <= target), which "roll under N" would deny. */}
+				Roll {target} or under
 			</p>
 			<div className="slider-row">
 				<span className="faint">{DICE_MIN_TARGET}</span>
@@ -460,6 +469,8 @@ function DicePicker({ wager, onChange }: { wager: Wager; onChange: (w: Wager) =>
 					type="range"
 					min={DICE_MIN_TARGET}
 					max={DICE_MAX_TARGET}
+					step={1}
+					aria-label="Win on this total or under"
 					value={target}
 					onChange={(event) =>
 						onChange({
@@ -576,6 +587,7 @@ function SideBetSlider({
 					style={{ flex: 'none', paddingInline: '0.8rem' }}
 					onClick={() => onChange(0)}
 					disabled={value === 0}
+					aria-label={`No ${label} bet`}
 				>
 					Off
 				</button>
@@ -589,7 +601,7 @@ function SideBetSlider({
 					onChange={(event) => onChange(Number(event.target.value))}
 					disabled={max === 0}
 				/>
-				<NumberField min={0} max={max} value={value} label={`${label} chips`} onChange={onChange} disabled={max === 0} />
+				<NumberField min={0} max={max} value={Math.min(value, max)} label={`${label} chips`} onChange={onChange} disabled={max === 0} />
 			</div>
 			{max === 0 ? <p className="faint">Your stack has nothing left over for a side bet.</p> : null}
 		</>
@@ -664,7 +676,7 @@ function CrapsPicker({
 	return (
 		<div className="wager">
 			<p className="board__label" style={{ marginBottom: '0.35rem' }}>
-				Line bet — {bet}
+				Line bet — {chipCount(bet)}
 			</p>
 			<div className="choice-grid choice-grid--2">
 				{(
@@ -677,6 +689,7 @@ function CrapsPicker({
 						key={option.side}
 						type="button"
 						className={`choice${side === option.side ? ' choice--on' : ''}`}
+						aria-pressed={side === option.side}
 						onClick={() => set({ side: option.side, field })}
 					>
 						{option.label}
@@ -782,7 +795,7 @@ export function SlotsPaytable() {
 				{rows.map((symbol) => (
 					<li key={symbol}>
 						<span>
-							<SlotIcon symbol={symbol} size="1.3rem" /> {symbol}
+							<SlotIcon symbol={symbol} size="1.3rem" decorative /> {symbol}
 						</span>
 						{/* The table holds return multiples; the odds people quote are profit. */}
 						<span className="faint">{SLOT_PAYTABLE[symbol] - 1}:1</span>

@@ -10,9 +10,13 @@
 import { useEffect, useState } from 'react';
 import { CRAPS_POINTS, CRAPS_FIELD } from '../../shared/games';
 import type { Action, GameView } from '../../shared/protocol';
+import { formatChips } from '../lib/format';
 import { Actions, Die, Note, useRollOnMount, useTick } from './boardKit';
 
 type CrapsView = Extract<GameView, { game: 'craps' }>;
+
+/** Bet sizes say "chips": a bare number beside the dice reads as a roll. */
+const chipCount = (n: number): string => `${formatChips(n)} ${n === 1 ? 'chip' : 'chips'}`;
 
 const ratio = ([win, per]: readonly [number, number]) => `${win}:${per}`;
 
@@ -59,7 +63,7 @@ export function CrapsBoard({
 	return (
 		<div className="board">
 			<div className="craps">
-				<div className="craps__points" aria-label={view.point === null ? 'No point' : `Point ${view.point}`}>
+				<div className="craps__points" role="img" aria-label={view.point === null ? 'No point' : `Point ${view.point}`}>
 					{CRAPS_POINTS.map((n) => (
 						<span key={n} className={`craps__point${view.point === n ? ' craps__point--on' : ''}`}>
 							{n}
@@ -100,12 +104,12 @@ export function CrapsBoard({
 
 				{view.odds > 0 && view.oddsRatio ? (
 					<p className="craps__odds">
-						Odds bet <strong>{view.odds}</strong> · pays {ratio(view.oddsRatio)} if you win
+						Odds bet <strong>{chipCount(view.odds)}</strong> · pays {ratio(view.oddsRatio)} if you win
 					</p>
 				) : null}
 				{view.field ? (
 					<p className="craps__odds">
-						Field <strong>{view.field.bet}</strong>
+						Field bet <strong>{chipCount(view.field.bet)}</strong>
 						{fieldWon === null
 							? ' · decided by the first roll'
 							: fieldWon
@@ -135,7 +139,7 @@ export function CrapsBoard({
 								disabled={busy}
 								onClick={() => onAction({ type: offer.multiple === 1 ? 'BET_1X' : 'BET_2X' })}
 							>
-								Take {offer.multiple}× odds ({offer.chips})
+								Take {offer.multiple}× odds ({chipCount(offer.chips)})
 							</button>
 						))}
 						<button

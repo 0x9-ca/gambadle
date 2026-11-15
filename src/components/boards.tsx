@@ -21,6 +21,9 @@ import { VideoPokerBoard } from './VideoPoker';
 import { SlotIcon } from './SlotIcon';
 import { SlotsPaytable } from './wagers';
 
+/** "1 chip", "25 chips": a bare number on a board reads as a card or dice total. */
+const chipCount = (n: number): string => `${formatChips(n)} ${n === 1 ? 'chip' : 'chips'}`;
+
 interface BoardProps {
 	/** True while an action is in flight. */
 	busy: boolean;
@@ -170,16 +173,16 @@ function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>)
 			{view.trilux && dealt ? (
 				<Note>
 					{/* Name the number as chips so it is not read as a card total. */}
-					TriLux side bet of {view.trilux.bet} {view.trilux.bet === 1 ? 'chip' : 'chips'}:{' '}
+					TriLux side bet of {chipCount(view.trilux.bet)}:{' '}
 					{view.trilux.hand ? `${view.trilux.hand} pays ${view.trilux.pays}:1` : 'no hand, lost'}
 				</Note>
 			) : null}
-			{!view.resolved && view.insured > 0 ? <Note>Insured for {view.insured}.</Note> : null}
+			{!view.resolved && view.insured > 0 ? <Note>Insured for {chipCount(view.insured)}.</Note> : null}
 			{!view.resolved && view.insuranceOffer !== null ? (
 				<>
 					<Note>Dealer shows an ace. Insurance pays 2:1 if the dealer has blackjack.</Note>
 					<Actions>
-						{button('INSURE', `Insure (${view.insuranceOffer})`, true)}
+						{button('INSURE', `Insure (${chipCount(view.insuranceOffer)})`, true)}
 						{button('NO_INSURANCE', 'No insurance')}
 					</Actions>
 				</>
@@ -512,7 +515,7 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 					spin.win > 0 ? (
 						<p className="board__caption">
 							{/* `win` is a return multiple of the spin's bet, so profit is one less. */}
-							{spin.lines.map((row) => SLOT_LINES[row]).join(' and ')} line pays{' '}
+							{spin.lines.map((row) => SLOT_LINES[row]).join(' and ')} {spin.lines.length > 1 ? 'lines pay' : 'line pays'}{' '}
 							<strong className="board__caption-value">{spin.win - 1}:1</strong>
 						</p>
 					) : (
@@ -522,7 +525,7 @@ function SlotsBoard({ view, busy, onAction, animate }: BoardOf<'slots'>) {
 					<p className="board__caption">Spin {index + 1} of {SLOT_SPINS}…</p>
 				)
 			) : (
-				<p className="board__caption">{busy ? 'Good luck!' : `${SLOT_SPINS} spins at ${formatChips(view.perSpin)} each`}</p>
+				<p className="board__caption">{busy ? 'Good luck!' : `${SLOT_SPINS} spins at ${chipCount(view.perSpin)} each`}</p>
 			)}
 
 			<Actions>
@@ -554,7 +557,8 @@ function ThreeCardBoard({ view, busy, onAction, animate }: BoardOf<'threecard'>)
 	return (
 		<div className="board">
 			<BoardRow
-				label="Your hand"
+				// "You", as on the other boards: a longer label pushes this row's cards out of line with the dealer's.
+				label="You"
 				hand={view.hand}
 				showTotal={false}
 				still={animate ? view.hand.cards.length : undefined}
@@ -717,7 +721,7 @@ function UltimateBoard({ view, busy, onAction, animate }: BoardOf<'ultimate'>) {
 			<CardsRow label="You" cards={view.hand.cards} slots={2} still={animate ? 2 : undefined} />
 			<p className="board__label" style={{ margin: 0 }}>
 				{view.rank}
-				{view.play > 0 ? ` · Play bet ${view.play}` : ''}
+				{view.play > 0 ? ` · Play bet ${chipCount(view.play)}` : ''}
 			</p>
 			{view.resolved ? (
 				view.folded ? (
