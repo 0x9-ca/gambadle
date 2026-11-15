@@ -89,9 +89,13 @@ export function restoreWager(game: GameId, bet: number, stack: number): Wager | 
 export function lastSpread(limit: number): RouletteChip[] | null {
 	const saved = load().roulette;
 	if (!saved || saved.game !== 'roulette' || !Array.isArray(saved.bets)) return null;
-	const bets = saved.bets.filter(
-		(c): c is RouletteChip => !!c && typeof c.amount === 'number' && c.amount >= 1 && !!c.bet && typeof c.bet.kind === 'string'
-	);
+	// Whole chips only: a stored fraction (or garbage) would be refused by the server.
+	const bets = saved.bets
+		.filter(
+			(c): c is RouletteChip =>
+				!!c && typeof c.amount === 'number' && Number.isFinite(c.amount) && c.amount >= 1 && !!c.bet && typeof c.bet.kind === 'string'
+		)
+		.map((c) => ({ ...c, amount: Math.floor(c.amount) }));
 	const total = bets.reduce((sum, c) => sum + c.amount, 0);
 	if (total < 1 || limit < 1) return null;
 	if (total <= limit) return bets;

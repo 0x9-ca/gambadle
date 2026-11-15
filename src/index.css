@@ -197,6 +197,20 @@ button:disabled {
 	box-shadow: 0 0 0 3px rgb(227 178 60 / 0.18);
 }
 
+/* The smallest phones (320px): brand, pips, day and a four-digit stack overflowed sideways. */
+@media (max-width: 22rem) {
+	.topbar__inner {
+		gap: 0.45rem;
+		padding-inline: 0.75rem;
+	}
+	.brand {
+		letter-spacing: 0.06em;
+	}
+	.chips__label {
+		display: none;
+	}
+}
+
 .countdown {
 	font-family: var(--mono);
 	font-size: 0.72rem;
@@ -1086,6 +1100,14 @@ button:disabled {
 	color: var(--loss);
 }
 
+/* "chips" after a big stack number, so it is not read as a score or a multiplier. */
+.delta__unit {
+	font-family: var(--font);
+	font-size: 0.45em;
+	font-weight: 600;
+	color: var(--ink-dim);
+}
+
 /* Double or nothing */
 
 .don {
@@ -1260,6 +1282,20 @@ button:disabled {
 .daily__table td:nth-child(2) {
 	font-family: var(--mono);
 	font-weight: 700;
+}
+
+/* On the smallest phones (320px) the "of N" columns pushed past the edge. */
+@media (max-width: 22rem) {
+	.daily__table {
+		font-size: 0.75rem;
+	}
+	.daily__table th,
+	.daily__table td {
+		padding-inline: 0.1rem;
+	}
+	.daily__table th:first-child {
+		white-space: normal;
+	}
 }
 
 /* Personal stats, folded away under their summary line. */

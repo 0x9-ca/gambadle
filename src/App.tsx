@@ -56,8 +56,19 @@ export default function App() {
 				return null;
 			} catch (cause) {
 				const message =
-					cause instanceof ApiRequestError ? cause.message : 'Something went wrong';
+					cause instanceof ApiRequestError
+						? cause.message
+						: 'Could not reach the table. Check your connection and try again.';
 				if (seq === requestSeq.current && !quiet) setError(message);
+				// The run may have moved on without us: the day rolled over, another tab
+				// played, or the action landed but its reply was lost. Re-read it so the
+				// screen is not left offering buttons the server will keep refusing.
+				try {
+					const fresh = await fetchState();
+					if (seq === requestSeq.current) setView(fresh);
+				} catch {
+					// Still unreachable; the message above already says so.
+				}
 				return message;
 			} finally {
 				if (seq === requestSeq.current) setBusy(false);
@@ -68,12 +79,16 @@ export default function App() {
 
 	// Restore any run in progress. A `daily` reset reason means yesterday's run
 	// was voided, so the banner explains why the player is back at 1000.
+	const [attempt, setAttempt] = useState(0);
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
 			try {
 				const initial = await fetchState();
-				if (!cancelled) setView(initial);
+				if (!cancelled) {
+					setView(initial);
+					setError(null);
+				}
 			} catch (cause) {
 				if (!cancelled) {
 					setError(cause instanceof ApiRequestError ? cause.message : 'Could not reach the table');
@@ -85,7 +100,7 @@ export default function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [attempt]);
 
 	const run = view?.run ?? null;
 	const shown = useRevealHold(run);
@@ -143,6 +158,19 @@ export default function App() {
 						<p className="faint" style={{ textAlign: 'center' }}>
 							Taking your seat…
 						</p>
+					) : view === null ? (
+						// The state never loaded. Offering "Start a run" here would replace a
+						// run already in progress (and cost today's ranked run), so retry instead.
+						<button
+							type="button"
+							className="btn btn--primary btn--block"
+							onClick={() => {
+								setLoaded(false);
+								setAttempt((n) => n + 1);
+							}}
+						>
+							Try again
+						</button>
 					) : run === null && staging ? (
 						<PracticeMenu busy={busy} onPick={(game) => void act({ type: 'START_TEST', game })} />
 					) : run === null ? (
@@ -167,11 +195,12 @@ export default function App() {
 
 					{shown ? <RoundLog run={shown.run} /> : null}
 					{/* Not before the first reply: staging has neither panel, and asking would only 404. */}
-					{!loaded || staging ? null : (
+					{/* Not when the state failed to load either, and not on the submitted screen, which has its own fresh board. */}
+					{!loaded || staging || view === null ? null : (
 						<>
 							{/* Refreshes when a run finishes, once its reveal has played out. */}
 							<Stats refreshKey={shown?.run.phase === 'finished' ? `done-${shown.run.history.length}` : 'live'} />
-							<Leaderboard />
+							{run?.phase === 'submitted' ? null : <Leaderboard />}
 						</>
 					)}
 				</main>

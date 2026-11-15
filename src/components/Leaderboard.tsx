@@ -6,7 +6,7 @@
  * polling would be wasteful.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LeaderboardView } from '../../shared/protocol';
 import { ApiRequestError, fetchLeaderboard } from '../lib/api';
 import { formatChips, formatDay } from '../lib/format';
@@ -20,25 +20,31 @@ export function Leaderboard({ highlight }: { highlight?: 'submitted' }) {
 	const [view, setView] = useState<LeaderboardView | null>(() => cache.get('today') ?? null);
 	const [error, setError] = useState<string | null>(null);
 
-	const load = useCallback(async (next: Scope) => {
-		const cached = cache.get(next);
-		if (cached) setView(cached);
-		setError(null);
-		try {
-			const fresh = await fetchLeaderboard(next);
-			cache.set(next, fresh);
-			setView(fresh);
-		} catch (cause) {
-			if (cause instanceof ApiRequestError) setError(cause.message);
-			else setError('Could not load the board');
-		}
-	}, []);
-
-	// `highlight` means we just submitted, so the board is definitely stale.
+	// A fresh mount (`highlight` means we just submitted) may follow a finished
+	// run, so the cache is only a placeholder until the refetch lands.
 	useEffect(() => {
 		cache.clear();
-		void load(scope);
-	}, [scope, load, highlight]);
+	}, [highlight]);
+
+	useEffect(() => {
+		// Never show the other tab's rows under this one while it loads, and drop
+		// a reply that lands after the player has switched tabs again.
+		let current = true;
+		setView((shown) => (shown?.scope === scope ? shown : (cache.get(scope) ?? null)));
+		setError(null);
+		fetchLeaderboard(scope).then(
+			(fresh) => {
+				cache.set(scope, fresh);
+				if (current) setView(fresh);
+			},
+			(cause) => {
+				if (current) setError(cause instanceof ApiRequestError ? cause.message : 'Could not load the board');
+			}
+		);
+		return () => {
+			current = false;
+		};
+	}, [scope, highlight]);
 
 	const entries = view?.entries ?? [];
 	const you = view?.you ?? null;
@@ -72,9 +78,12 @@ export function Leaderboard({ highlight }: { highlight?: 'submitted' }) {
 			) : null}
 
 			{!view ? (
-				<p className="faint" style={{ textAlign: 'center', margin: '1rem 0 0' }}>
-					Loading the board…
-				</p>
+				// A failed load says so above; "Loading" would never end.
+				error ? null : (
+					<p className="faint" style={{ textAlign: 'center', margin: '1rem 0 0' }}>
+						Loading the board…
+					</p>
+				)
 			) : entries.length === 0 ? (
 				<p className="faint" style={{ textAlign: 'center', margin: '1rem 0 0' }}>
 					Nobody has posted a score yet. Be the first.

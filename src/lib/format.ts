@@ -77,6 +77,13 @@ export function roundsOf(history: readonly RoundResult[]): RoundSummary[] {
 	return rounds;
 }
 
+/**
+ * How a Double or Nothing chain is labelled, the same on the share card and in
+ * the shared text: "doubled", then "doubled ×2" and so on. Never a bare "×3",
+ * which reads as a payout multiplier.
+ */
+export const doubledLabel = (doubles: number): string => (doubles > 1 ? `doubled ×${doubles}` : 'doubled');
+
 const square = (net: number): string => (net > 0 ? '🟩' : net < 0 ? '🟥' : '⬜');
 
 /**
@@ -88,7 +95,7 @@ export function shareText(run: RunState, origin: string): string {
 	const net = run.chips - STARTING_CHIPS;
 	const head = `Gambadle${run.seed ? ` ${formatDay(run.seed)}` : ''}${run.seed && run.eligible !== false ? ' · Daily' : ''}`;
 	const lines = roundsOf(run.history).map(
-		(r) => `${square(r.net)} ${SHORT_TITLE[r.game]} ${formatDelta(r.net)}${r.doubles > 0 ? ` (doubled${r.doubles > 1 ? ` ×${r.doubles}` : ''})` : ''}`
+		(r) => `${square(r.net)} ${SHORT_TITLE[r.game]} ${formatDelta(r.net)}${r.doubles > 0 ? ` (${doubledLabel(r.doubles)})` : ''}`
 	);
 	return [head, `${formatChips(run.chips)} chips (${formatDelta(net)})${run.endedBy === 'bust' ? ' · busted' : ''}`, ...lines, origin].join('\n');
 }

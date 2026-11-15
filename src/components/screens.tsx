@@ -232,9 +232,23 @@ export function ChoosingScreen({
 					</button>
 				</>
 			) : (
-				<p className="faint" style={{ textAlign: 'center' }}>
-					{busy ? 'Dealing…' : 'Opening the table…'}
-				</p>
+				// Read in render: a failed auto-confirm ends with `busy` going false
+				// while still on this screen, and without a way to retry the run would
+				// be stuck here.
+				autoConfirmed.current && !busy ? (
+					<button
+						type="button"
+						className="btn btn--primary btn--block"
+						style={{ marginTop: '1rem' }}
+						onClick={() => onConfirm(seedWager)}
+					>
+						Deal
+					</button>
+				) : (
+					<p className="faint" style={{ textAlign: 'center' }}>
+						{busy ? 'Dealing…' : 'Opening the table…'}
+					</p>
+				)
 			)}
 		</div>
 	);
