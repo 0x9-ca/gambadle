@@ -51,6 +51,7 @@ import { fromView, makeCard, type Card, type SuitName } from '../worker/games/ca
 import { GAMES, gameById } from '../worker/games/index';
 import { compareHands, rankHand, type HandCategory } from '../worker/games/threecard';
 import { GameError, type GameHandler, type Outcome } from '../worker/games/types';
+import { withRng } from '../worker/rng';
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -571,6 +572,35 @@ describe('dice', () => {
 		expect(handler.legalActions(rolled.state)).toEqual([]);
 		expect(() => handler.apply(rolled.state, { type: 'ROLL' })).toThrow(GameError);
 		expect(() => handler.apply(step.state, { type: 'SPIN' })).toThrow(GameError);
+	});
+
+	it('pays whole hundredths exactly, without a floating-point chip short', () => {
+		// 100 * 2.32 and 100 * 1.16 are a hair under the integer in floating
+		// point, which used to floor a winning 100-chip bet one chip short.
+		for (let target = DICE_MIN_TARGET; target <= DICE_MAX_TARGET; target++) {
+			const hundredths = Math.round(rollUnderMultiplier(target) * 100);
+			for (const bet of [1, 25, 100, 375, 1000]) {
+				const parsed = handler.parseWager({ game: 'dice', bet: { kind: 'roll_under', target } }, bet, HUGE_STACK);
+				const step = handler.init(parsed, bet, HUGE_STACK);
+				// A draw of 0 rolls double one, which wins at every target.
+				const { outcome } = withRng(() => 0, () => handler.apply(step.state, { type: 'ROLL' }));
+				expect(outcome!.returned).toBe(Math.floor((bet * hundredths) / 100));
+			}
+		}
+	});
+});
+
+describe('malformed wagers are game errors, not crashes', () => {
+	it('rejects a wager with no bet body', () => {
+		const cases: [GameId, Wager][] = [
+			['coinflip', { game: 'coinflip' } as unknown as Wager],
+			['dice', { game: 'dice' } as unknown as Wager],
+			['roulette', { game: 'roulette', bets: [{ amount: 5 }] } as unknown as Wager],
+			['roulette', { game: 'roulette', bets: [{ bet: null, amount: 5 }] } as unknown as Wager],
+		];
+		for (const [game, wager] of cases) {
+			expect(() => gameById(game).parseWager(wager, BET, HUGE_STACK)).toThrow(GameError);
+		}
 	});
 });
 

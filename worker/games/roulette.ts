@@ -38,6 +38,8 @@ interface RouletteState {
 }
 
 function validate(bet: RouletteBet): RouletteBet {
+	// Client input: a chip without a bet must be a 4xx, not a TypeError (500).
+	if (!bet || typeof bet !== 'object') throw new GameError('invalid_wager', 'bad roulette spot');
 	switch (bet.kind) {
 		case 'straight': {
 			const { number } = bet;

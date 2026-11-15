@@ -30,6 +30,8 @@ interface DiceState {
 }
 
 function validate(bet: DiceBet): DiceBet {
+	// A malformed body must be a 4xx, not a TypeError (500).
+	if (!bet || typeof bet !== 'object') throw new GameError('invalid_wager', 'missing dice bet');
 	const { target } = bet;
 	if (!Number.isInteger(target) || target < MIN_TARGET || target > MAX_TARGET) {
 		throw new GameError('invalid_wager', `roll-under target must be ${MIN_TARGET}-${MAX_TARGET}`);
@@ -88,8 +90,10 @@ export const dice: GameHandler = {
 				view: view(s),
 				outcome: {
 					stake: s.bet,
-					// Fractional multipliers are truncated to whole chips.
-					returned: Math.floor(s.bet * total),
+					// Fractional multipliers are truncated to whole chips. The multiplier
+					// is a whole number of hundredths, so multiply in integers: 100 * 2.32
+					// is 231.99999999999997 in floating point and would floor a chip short.
+					returned: Math.floor((s.bet * Math.round(total * 100)) / 100),
 					detail: `${s.roll} is ${target} or lower — pays ${+(total - 1).toFixed(2)}:1`,
 				},
 			};
