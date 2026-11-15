@@ -55,8 +55,10 @@ function threeCardStraightHigh(cards: readonly Card[]): number | null {
 	if (ranks.length !== 3) return null;
 	if (ranks[0] === ranks[1] || ranks[1] === ranks[2]) return null;
 	if (ranks[2] - ranks[0] === 2) return ranks[2]!;
-	// A-2-3 wheel only.
-	if (ranks[0] === 2 && ranks[1] === 3 && ranks[2] === 14) return 5;
+	// A-2-3 is the lowest straight, three high, with the ace playing low.
+	// Scoring it five high (a five-card habit) tied it with 3-4-5, and then
+	// the ace won the card-by-card tiebreak, so A-2-3 beat 2-3-4 and 3-4-5.
+	if (ranks[0] === 2 && ranks[1] === 3 && ranks[2] === 14) return 3;
 	return null;
 }
 

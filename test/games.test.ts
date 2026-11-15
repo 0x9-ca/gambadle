@@ -1501,14 +1501,21 @@ describe('three card poker', () => {
 		expect(new Set(hands.map(([, c]) => c)).size).toBe(7);
 	});
 
-	it('scores a wheel as five-high, not a wrap around to ace-high', () => {
-		const wheel = rankHand([card('A', 's'), card('2', 'h'), card('3', 'd')]);
-		expect(wheel.category).toBe('straight');
-		expect(wheel.label).toBe('5 high Straight');
-		// In this game's ranking the wheel is treated as five-high, so it beats
-		// 2-3-4 and loses to broadway.
-		const six = rankHand([card('2', 's'), card('3', 'h'), card('4', 'd')]);
-		expect(wheel.score).toBeGreaterThan(six.score);
+	it('scores A-2-3 as the lowest straight, not a wrap around to ace-high', () => {
+		const wheel = [card('A', 's'), card('2', 'h'), card('3', 'd')];
+		expect(rankHand(wheel).category).toBe('straight');
+		expect(rankHand(wheel).label).toBe('3 high Straight');
+		// The ace plays low, so A-2-3 loses to 2-3-4 and 3-4-5. It used to score
+		// five high, tie 3-4-5 and then win the tiebreak on the ace.
+		const four = [card('2', 's'), card('3', 'h'), card('4', 'd')];
+		const five = [card('3', 's'), card('4', 'h'), card('5', 'd')];
+		expect(compareHands(wheel, four)).toBeLessThan(0);
+		expect(compareHands(wheel, five)).toBeLessThan(0);
+		expect(compareHands(wheel, [card('A', 'c'), card('2', 'd'), card('3', 'h')])).toBe(0);
+		// Suited, it is still the lowest straight flush.
+		const suitedWheel = rankHand([card('A', 'h'), card('2', 'h'), card('3', 'h')]);
+		expect(suitedWheel.category).toBe('straight flush');
+		expect(suitedWheel.score).toBeLessThan(rankHand([card('2', 'c'), card('3', 'c'), card('4', 'c')]).score);
 		// And Q-K-A broadway is the highest, below the royal flush only in flushes.
 		const broadway = rankHand([card('A', 's'), card('K', 'h'), card('Q', 'd')]);
 		expect(broadway.category).toBe('straight');
