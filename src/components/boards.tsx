@@ -169,7 +169,8 @@ function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>)
 			<Note>Blackjack pays 3:2. Dealer stands on all 17s.</Note>
 			{view.trilux && dealt ? (
 				<Note>
-					TriLux ({view.trilux.bet}):{' '}
+					{/* Name the number as chips so it is not read as a card total. */}
+					TriLux side bet of {view.trilux.bet} {view.trilux.bet === 1 ? 'chip' : 'chips'}:{' '}
 					{view.trilux.hand ? `${view.trilux.hand} pays ${view.trilux.pays}:1` : 'no hand, lost'}
 				</Note>
 			) : null}
