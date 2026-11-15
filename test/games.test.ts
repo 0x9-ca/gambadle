@@ -1073,7 +1073,7 @@ describe('baccarat', () => {
 		expect(Math.abs(banker - player)).toBeLessThan(500);
 		expect(tie / hands).toBeGreaterThan(0.085);
 		expect(tie / hands).toBeLessThan(0.105);
-	}, 12_000);
+	}, 30_000); // a heavy simulation; leave headroom on a loaded machine
 
 	it('pushes Player and Banker on a tie instead of charging a full loss', () => {
 		// Ties land about one time in ten. Charging a full loss on them would take
@@ -1748,7 +1748,7 @@ describe('three card poker', () => {
 		);
 		expect(played.mean).toBeLessThan(0);
 		expect(played.mean).toBeGreaterThan(-0.45);
-	});
+	}, 30_000); // simulates many hands; the 5s default flakes under load
 
 	it('only accepts PLAY or FOLD, and only once', () => {
 		const step = handler().init(

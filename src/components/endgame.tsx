@@ -110,7 +110,7 @@ export function NameEntry({
 						autoComplete="off"
 						autoCapitalize="off"
 						autoCorrect="off"
-						maxLength={32}
+						maxLength={16}
 						disabled={busy}
 					/>
 					{error ? (

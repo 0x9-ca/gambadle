@@ -15,8 +15,8 @@
  * house edge here is a closed-form number, not a guess.
  *
  * Each reel has its own distribution: reel 1 is heavy on cherries, reel 3 on the
- * big symbols. That is what makes the top payouts land about once in nine hundred
- * spins without needing silly odds on a single reel.
+ * big symbols. That is what makes the top symbol land about once in 2667 spins
+ * (see shared/games.ts) without needing silly odds on a single reel.
  */
 
 import {
