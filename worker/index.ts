@@ -103,11 +103,12 @@ export default {
 
 async function handleState(request: Request, env: Env): Promise<Response> {
 	const sessionId = await readSession(request, env.SESSION_SECRET);
-	const { run, resetReason } = await loadRun(env, sessionId);
+	const day = etDay();
+	const { run, resetReason } = await loadRun(env, sessionId, day);
 	return json({
 		...viewOf(env, run, resetReason),
 		wagered: run ? totalWagered(run) : 0,
-		rankedAvailable: !isStaging(env) && (await rankedAvailable(env, sessionId)),
+		rankedAvailable: !isStaging(env) && (await rankedAvailable(env, sessionId, day)),
 	} satisfies RunView);
 }
 
@@ -116,34 +117,45 @@ async function handleState(request: Request, env: Env): Promise<Response> {
  *
  * A run stamped with a day that is not today is treated as gone. That is the
  * entire daily-reset mechanism: no scheduler, and no DST edge cases.
+ *
+ * `day` is read once per request and passed everywhere: a request that spans
+ * midnight must not load against one day and save against the next, which
+ * would carry yesterday's run (and its seed) into today. `version` is the row's
+ * `updated_at` (null for no row), for `putRun`'s compare-and-swap.
  */
 async function loadRun(
 	env: Env,
-	sessionId: string | null
-): Promise<{ run: RunState | null; resetReason: RunView['resetReason'] }> {
-	if (!sessionId) return { run: null, resetReason: null };
+	sessionId: string | null,
+	day: string
+): Promise<{ run: RunState | null; resetReason: RunView['resetReason']; version: number | null }> {
+	if (!sessionId) return { run: null, resetReason: null, version: null };
 
 	const row = await getRun(env.DB, sessionId);
-	if (!row) return { run: null, resetReason: null };
+	if (!row) return { run: null, resetReason: null, version: null };
 
-	if (row.day !== etDay()) {
+	if (row.day !== day) {
 		// Yesterday's run: the player is back to 1000 chips with nothing open.
-		// Drop the row eagerly; the cron would clear it anyway.
-		void deleteRun(env.DB, sessionId).catch((error: unknown) => {
+		// Drop the row eagerly; the cron would clear it anyway. Only that day's
+		// row, so a run this same request goes on to start is never caught by it.
+		void deleteRun(env.DB, sessionId, row.day).catch((error: unknown) => {
 			console.error(
 				JSON.stringify({ message: 'failed to delete voided run', error: String(error) })
 			);
 		});
-		return { run: null, resetReason: 'daily' };
+		return { run: null, resetReason: 'daily', version: row.updated_at };
 	}
 
-	return { run: JSON.parse(row.state) as RunState, resetReason: null };
+	return { run: JSON.parse(row.state) as RunState, resetReason: null, version: row.updated_at };
 }
 
 /** A session's first run of the day is the only one that can be ranked. */
-async function rankedAvailable(env: Env, sessionId: string | null): Promise<boolean> {
-	return !sessionId || (await startsToday(env.DB, sessionId, etDay())) === 0;
+async function rankedAvailable(env: Env, sessionId: string | null, day: string): Promise<boolean> {
+	return !sessionId || (await startsToday(env.DB, sessionId, day)) === 0;
 }
+
+/** Another request changed the run between this one reading and writing it. */
+const runChanged = (): Response =>
+	json({ error: 'Your run changed in another tab. Refresh to continue.', code: 'illegal_action' } satisfies ApiError, 409);
 
 function viewOf(
 	env: Env,
@@ -183,7 +195,8 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 	if ('error' in action) return action.error;
 
 	const sessionId = await readSession(request, env.SESSION_SECRET);
-	const { run: existing } = await loadRun(env, sessionId);
+	const day = etDay();
+	const { run: existing, version } = await loadRun(env, sessionId, day);
 
 	// These two need database access rather than a state transition, so they are
 	// handled here instead of in the engine.
@@ -192,7 +205,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 		return json({ error: 'Practice runs only exist on staging', code: 'invalid_action' } satisfies ApiError, 403);
 	}
 	if (action.action.type === 'SUBMIT_NAME') {
-		return submitName(env, sessionId, existing, action.action.name);
+		return submitName(env, sessionId, existing, version, day, action.action.name);
 	}
 	if (action.action.type === 'ABANDON') {
 		// The session is kept on purpose: clearing it would hand the player a
@@ -201,7 +214,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 		return json({
 			...viewOf(env, null, 'replaced'),
 			wagered: 0,
-			rankedAvailable: !isStaging(env) && (await rankedAvailable(env, sessionId)),
+			rankedAvailable: !isStaging(env) && (await rankedAvailable(env, sessionId, day)),
 		} satisfies RunView);
 	}
 
@@ -210,15 +223,10 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 	}
 
 	const headers = new Headers();
-	let id = sessionId;
-	if (!id) {
-		// First action of a session, which is always START (or START_TEST on staging).
-		id = await newSessionId();
-		headers.append(
-			'Set-Cookie',
-			sessionCookieHeader(await signCookieValue(id, env.SESSION_SECRET), isSecure(request))
-		);
-	}
+	// First action of a session, which is always START (or START_TEST on staging).
+	// An existing session's cookie is re-sent too, so it never lapses while in use.
+	const id = sessionId ?? (await newSessionId());
+	headers.append('Set-Cookie', sessionCookieHeader(await signCookieValue(id, env.SESSION_SECRET), isSecure(request)));
 
 	// Only the first run a session starts each day is ranked (starting over
 	// mid-run counts as starting another), and that run alone gets the day's
@@ -227,11 +235,11 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 	// zero earlier starts and both come out ranked. START cannot fail in the
 	// engine, so recording it first never charges a start for a run not created.
 	const ranked =
-		action.action.type === 'START' && (await recordRunStart(env.DB, id, etDay())) === 0;
+		action.action.type === 'START' && (await recordRunStart(env.DB, id, day)) === 0;
 
 	let next: RunState;
 	try {
-		next = applyAction(existing, action.action, ranked ? etDay() : null, `daily-seed|${env.SESSION_SECRET}`);
+		next = applyAction(existing, action.action, ranked ? day : null, `daily-seed|${env.SESSION_SECRET}`);
 	} catch (error) {
 		if (error instanceof GameError) {
 			return json({ error: error.message, code: error.code } satisfies ApiError, 409);
@@ -240,7 +248,12 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 	}
 	if (action.action.type === 'START') next.eligible = ranked;
 
-	await putRun(env.DB, { id, day: etDay(), phase: next.phase, state: next, name: null });
+	// Every other action must still be acting on the run it read. A START
+	// replaces whatever is there anyway, and is left unguarded so a run start
+	// already counted above is never thrown away by a racing request.
+	const fresh = action.action.type === 'START' || action.action.type === 'START_TEST';
+	const written = await putRun(env.DB, { id, day, phase: next.phase, state: next, name: null }, fresh ? undefined : version);
+	if (!written) return runChanged();
 
 	// The run just ended (busted or survived): it counts toward the player's
 	// stats exactly once, whether or not a name is ever submitted.
@@ -249,7 +262,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 		try {
 			await recordRunResult(env.DB, {
 				sessionId: id,
-				day: etDay(),
+				day,
 				ranked: next.eligible !== false,
 				chips: next.chips,
 				bust: next.endedBy === 'bust',
@@ -264,7 +277,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 		{
 			...viewOf(env, next, null),
 			wagered: totalWagered(next),
-			rankedAvailable: !isStaging(env) && (await rankedAvailable(env, id)),
+			rankedAvailable: !isStaging(env) && (await rankedAvailable(env, id, day)),
 		} satisfies RunView,
 		200,
 		headers
@@ -335,6 +348,8 @@ async function submitName(
 	env: Env,
 	sessionId: string | null,
 	run: RunState | null,
+	version: number | null,
+	day: string,
 	rawName: unknown
 ): Promise<Response> {
 	let name: string;
@@ -360,13 +375,14 @@ async function submitName(
 		return json({ error: 'Your run is not over yet', code: 'invalid_action' } satisfies ApiError, 409);
 	}
 
-	const day = etDay();
 	const result = await submitScore(env.DB, {
 		runId: sessionId,
 		name,
 		day,
 		chips: run.chips,
-		roundsPlayed: run.history.length,
+		// Rounds, not history entries: each Double or Nothing adds an entry to the
+		// same round, so a five-round run with doubles would read "7 rounds".
+		roundsPlayed: new Set(run.history.map((entry) => entry.round)).size,
 		bust: run.endedBy === 'bust',
 	});
 
@@ -379,7 +395,9 @@ async function submitName(
 	}
 
 	const submitted: RunState = { ...run, phase: 'submitted', current: null };
-	await putRun(env.DB, { id: sessionId, day, phase: 'submitted', state: submitted, name });
+	// The score stands either way; if another request replaced the run meanwhile
+	// (a START from another tab), that newer run is kept rather than overwritten.
+	await putRun(env.DB, { id: sessionId, day, phase: 'submitted', state: submitted, name }, version);
 
 	return json({
 		...viewOf(env, submitted, null),
@@ -398,8 +416,11 @@ async function handleLeaderboard(request: Request, env: Env): Promise<Response> 
 
 	const sessionId = await readSession(request, env.SESSION_SECRET);
 	const row = sessionId ? await getRun(env.DB, sessionId) : null;
+	// Names are unique per day only, so a name from an earlier day's run would
+	// mark whoever holds it today as "you".
+	const name = row && (scope === 'alltime' || row.day === etDay()) ? row.name : null;
 
-	const view: LeaderboardView = await getLeaderboard(env.DB, scope, row?.name ?? null);
+	const view: LeaderboardView = await getLeaderboard(env.DB, scope, name);
 	return json(view);
 }
 

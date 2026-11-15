@@ -208,6 +208,23 @@ describe('committing a wager', () => {
 		throw new Error('unreachable');
 	});
 
+	// The wager comes straight from the request body: a malformed one must be a
+	// GameError (a 4xx), never a TypeError that surfaces as a 500.
+	it('rejects a malformed wager as a bad wager, whatever the game', () => {
+		for (const game of GAME_IDS) {
+			let run = initialRunState();
+			run.upcoming = game;
+			run = applyAction(run, { type: 'BEGIN_ROUND', bet: 10 });
+			for (const wager of [undefined, null, 7, 'x', { game }, { game, bet: null }, { game, bets: [null] }]) {
+				try {
+					applyAction(run, { type: 'WAGER', wager } as unknown as Action);
+				} catch (error) {
+					expect(error).toBeInstanceOf(GameError);
+				}
+			}
+		}
+	});
+
 	it('cannot act in a game before the wager is committed', () => {
 		const run = applyAction(initialRunState(), { type: 'BEGIN_ROUND', bet: 10 });
 		for (const action of [{ type: 'HIT' }, { type: 'SPIN' }, { type: 'FLIP' }] as Action[]) {

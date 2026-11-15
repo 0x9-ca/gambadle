@@ -42,7 +42,14 @@ export async function readSession(request: Request, secret: string): Promise<str
 		if (eq === -1) continue;
 		const name = part.slice(0, eq).trim();
 		if (name !== COOKIE_NAME) continue;
-		return verifyCookieValue(decodeURIComponent(part.slice(eq + 1).trim()), secret);
+		let value: string;
+		try {
+			value = decodeURIComponent(part.slice(eq + 1).trim());
+		} catch {
+			// A mangled cookie (a stray '%') is no session, not a 500 on every request.
+			return null;
+		}
+		return verifyCookieValue(value, secret);
 	}
 	return null;
 }
@@ -66,7 +73,11 @@ export function sessionCookieHeader(value: string, secure: boolean): string {
 		'Path=/',
 		'HttpOnly',
 		'SameSite=Lax',
-		'Max-Age=43200', // 12 hours; a run cannot outlive a day anyway.
+		// The session is the player's identity across days (one ranked run a day,
+		// stats and the day streak), not just the run's: a short cookie handed out
+		// a fresh identity, and with it another ranked run, the same day. 400 days
+		// is the most browsers keep; every action renews it.
+		'Max-Age=34560000',
 	];
 	if (secure) attrs.push('Secure');
 	return attrs.join('; ');

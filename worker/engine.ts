@@ -35,7 +35,7 @@ import {
 	initialRunState,
 } from '../shared/protocol';
 import { gameById } from './games';
-import { GameError } from './games/types';
+import { GameError, type GameHandler } from './games/types';
 import { pick, withRng } from './rng';
 import { seededRng } from './seed';
 
@@ -382,14 +382,15 @@ function commitWager(run: RunState, wager: Wager): RunState {
 	if (run.phase !== 'choosing' || !run.current) {
 		throw new GameError('illegal_action', 'no round awaiting a wager');
 	}
-	if (wager.game !== run.current.game) {
+	// The wager is straight from the request body, so it may not even be an object.
+	if (typeof wager !== 'object' || wager === null || wager.game !== run.current.game) {
 		throw new GameError('invalid_wager', 'wager does not match the round game');
 	}
 
 	const handler = gameById(run.current.game);
 	// For roulette the bet taken at BEGIN_ROUND is only the table limit; the
 	// stake is whatever the player actually spread across the spots.
-	const normalized = handler.parseWager(wager, run.current.bet, run.chips);
+	const normalized = parseWager(handler, wager, run.current.bet, run.chips);
 	run.current.bet = handler.stakeOf?.(normalized) ?? run.current.bet;
 	const bet = run.current.bet;
 	const step = draw(run, `r${run.round}:d0:init`, () => handler.init(normalized, bet, run.chips));
@@ -402,6 +403,19 @@ function commitWager(run: RunState, wager: Wager): RunState {
 	// A game can resolve without any player action.
 	if (step.outcome) settleRound(run, step.outcome);
 	return run;
+}
+
+/**
+ * A game's `parseWager`, with any crash on a malformed shape (a missing `bet`
+ * object, say) reported as a bad wager rather than escaping as a 500.
+ */
+function parseWager(handler: GameHandler, wager: Wager, bet: number, stack: number): Wager {
+	try {
+		return handler.parseWager(wager, bet, stack);
+	} catch (error) {
+		if (error instanceof GameError) throw error;
+		throw new GameError('invalid_wager', 'malformed wager');
+	}
 }
 
 /** Routes an action belonging to the game currently in play. */
@@ -536,7 +550,7 @@ function acceptDouble(run: RunState): RunState {
 
 	// The stack is what bounds the wager, so it is passed as the available
 	// stack to both validation and init.
-	const normalized = handler.parseWager(rebaseWager(wager, stake, run.chips), stake, run.chips);
+	const normalized = parseWager(handler, rebaseWager(wager, stake, run.chips), stake, run.chips);
 	const step = draw(run, `r${run.round}:d${doubles + 1}:init`, () =>
 		handler.init(normalized, stake, run.chips)
 	);
