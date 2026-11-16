@@ -787,6 +787,16 @@ button:disabled {
 	color: var(--ink-faint);
 	font-weight: 700;
 }
+/*
+ * A board__label line of its own on a board is content, not a label: a poker
+ * hand's name, or what to tap. Uppercased, "Pair of Js" read as "PAIR OF JS".
+ * The short row labels (You, Dealer, High) keep the small caps.
+ */
+.board > p.board__label {
+	font-size: 0.85rem;
+	letter-spacing: 0.02em;
+	text-transform: none;
+}
 
 .board__total {
 	white-space: nowrap;
@@ -1128,10 +1138,9 @@ button:disabled {
 }
 
 .don__chain {
-	font-size: 0.75rem;
+	font-size: 0.8rem;
 	color: var(--ink-faint);
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	/* A sentence ("You won · doubled 2× so far"), so it is left as written. */
 	font-weight: 700;
 }
 
@@ -2286,6 +2295,18 @@ button:disabled {
 		opacity: 1;
 		visibility: visible;
 	}
+}
+
+/*
+ * A result restored by a page load has been seen already: it is shown at rest,
+ * without the deal, spin or tumble it played the first time. Every motion here
+ * ends where the element's own style already is, so stopping it shows the end.
+ */
+.board--settled *,
+.board--settled *::before,
+.board--settled *::after {
+	animation: none !important;
+	transition: none !important;
 }
 
 /* The verdict waits for the board's reveal, set per game by the delay inline. */

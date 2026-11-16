@@ -39,6 +39,21 @@ export default function App() {
 	const requestSeq = useRef(0);
 
 	/**
+	 * The last result that arrived in reply to something done on this page, by
+	 * `resultKey`. Only that one plays its reveal: on a page load the round has
+	 * already been seen (or was mid-reveal when the page went away), so it is
+	 * shown settled and nothing after it waits.
+	 */
+	const [freshResult, setFreshResult] = useState<string | null>(null);
+	const latest = useRef<RunView | null>(null);
+	const adopt = useCallback((next: RunView) => {
+		const key = resultKey(next.run);
+		if (key !== null && key !== resultKey(latest.current?.run ?? null)) setFreshResult(key);
+		latest.current = next;
+		setView(next);
+	}, []);
+
+	/**
 	 * Sends one intent and adopts the state the Worker returns.
 	 *
 	 * Resolves to the failure message, or null on success. When `quiet` is set
@@ -52,7 +67,7 @@ export default function App() {
 			if (!quiet) setError(null);
 			try {
 				const next = await sendAction(action);
-				if (seq === requestSeq.current) setView(next);
+				if (seq === requestSeq.current) adopt(next);
 				return null;
 			} catch (cause) {
 				const message =
@@ -64,8 +79,9 @@ export default function App() {
 				// played, or the action landed but its reply was lost. Re-read it so the
 				// screen is not left offering buttons the server will keep refusing.
 				try {
+					// A result found here still came from the player's own action.
 					const fresh = await fetchState();
-					if (seq === requestSeq.current) setView(fresh);
+					if (seq === requestSeq.current) adopt(fresh);
 				} catch {
 					// Still unreachable; the message above already says so.
 				}
@@ -74,7 +90,7 @@ export default function App() {
 				if (seq === requestSeq.current) setBusy(false);
 			}
 		},
-		[]
+		[adopt]
 	);
 
 	// Restore any run in progress. A `daily` reset reason means yesterday's run
@@ -86,6 +102,8 @@ export default function App() {
 			try {
 				const initial = await fetchState();
 				if (!cancelled) {
+					// Not `adopt`: whatever result this holds was settled before the page loaded.
+					latest.current = initial;
 					setView(initial);
 					setError(null);
 				}
@@ -189,7 +207,7 @@ export default function App() {
 									onChange={() => void act({ type: 'ABANDON' })}
 								/>
 							) : null}
-							<Play run={run} busy={busy} act={act} />
+							<Play run={run} busy={busy} act={act} animate={freshResult !== null && freshResult === resultKey(run)} />
 						</>
 					)}
 
@@ -270,18 +288,40 @@ type Act = (action: Action, quiet?: boolean) => Promise<string | null>;
  * offer, the end of the run) until the result board has played out, since
  * each of those gives the outcome away. Hidden panels cannot be tapped.
  */
-function AfterReveal({ result, children }: { result: RoundResult | null; children: ReactNode }) {
-	const revealed = useRevealed(revealSeconds(result));
+function AfterReveal({
+	result,
+	animate,
+	children,
+}: {
+	result: RoundResult | null;
+	animate: boolean;
+	children: ReactNode;
+}) {
+	const revealed = useRevealed(animate ? revealSeconds(result) : 0);
 	if (!revealed) return null;
-	return <div className="reveal">{children}</div>;
+	return <div className={animate ? 'reveal' : undefined}>{children}</div>;
 }
 
-function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
+/**
+ * Names the run's latest result, or null before the first. A new result always
+ * changes it (a Double or Nothing adds an entry to the same round); declining
+ * an offer does not, so the board stays as it is. The round is in it because a
+ * practice run's history stops growing once it is trimmed to its cap.
+ */
+function resultKey(run: RunState | null): string | null {
+	const last = run?.history[run.history.length - 1];
+	return run && last ? `${run.history.length}:${last.round}:${last.doubled ? 'd' : ''}${last.net}` : null;
+}
+
+function Play({ run, busy, act, animate }: { run: RunState; busy: boolean; act: Act; animate: boolean }) {
 	const confirmWager = useCallback((wager: Wager) => void act({ type: 'WAGER', wager }), [act]);
 	const lastResult = useMemo(
 		() => run.history[run.history.length - 1] ?? null,
 		[run.history]
 	);
+	// Keyed by result so a new one starts its reveal afresh even when the screen stays
+	// the same (a Double or Nothing settled by the deal), while declining keeps it.
+	const key = resultKey(run) ?? 'none';
 
 	// With no round open there is nothing to play, so the last round's result is
 	// shown above the bet table rather than on an empty screen.
@@ -289,8 +329,8 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 		case 'betting':
 			return (
 				<>
-					{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
-					<AfterReveal result={lastResult}>
+					{lastResult ? <ResultPanel key={`result-${key}`} result={lastResult} chips={run.chips} animate={animate} /> : null}
+					<AfterReveal key={`after-${key}`} result={lastResult} animate={animate}>
 						<BetScreen run={run} busy={busy} onBegin={(bet) => void act({ type: 'BEGIN_ROUND', bet })} />
 					</AfterReveal>
 				</>
@@ -320,8 +360,8 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 		case 'don_offer':
 			return (
 				<>
-					{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
-					<AfterReveal result={lastResult}>
+					{lastResult ? <ResultPanel key={`result-${key}`} result={lastResult} chips={run.chips} animate={animate} /> : null}
+					<AfterReveal key={`after-${key}`} result={lastResult} animate={animate}>
 						<DoubleOrNothing
 							run={run}
 							busy={busy}
@@ -336,8 +376,8 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 			if (run.testGame) {
 				return (
 					<>
-						{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
-						<AfterReveal result={lastResult}>
+						{lastResult ? <ResultPanel key={`result-${key}`} result={lastResult} chips={run.chips} animate={animate} /> : null}
+						<AfterReveal key={`after-${key}`} result={lastResult} animate={animate}>
 							<PracticeBust
 								game={run.testGame}
 								busy={busy}
@@ -350,8 +390,8 @@ function Play({ run, busy, act }: { run: RunState; busy: boolean; act: Act }) {
 			}
 			return (
 				<>
-					{lastResult ? <ResultPanel result={lastResult} chips={run.chips} /> : null}
-					<AfterReveal result={lastResult}>
+					{lastResult ? <ResultPanel key={`result-${key}`} result={lastResult} chips={run.chips} animate={animate} /> : null}
+					<AfterReveal key={`after-${key}`} result={lastResult} animate={animate}>
 						<NameEntryHost run={run} busy={busy} act={act} />
 					</AfterReveal>
 				</>
