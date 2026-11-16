@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initialRunState, type RunState, type RunView } from '../shared/protocol';
+import { initialRunState, type LeaderboardView, type RunState, type RunView } from '../shared/protocol';
 import { deleteRun, getRun, putRun } from '../worker/db';
 import worker from '../worker/index';
 import { signCookieValue } from '../worker/session';
@@ -51,7 +51,7 @@ async function call(path: string, body?: unknown, id = SESSION): Promise<Respons
 const action = (body: unknown, id = SESSION) => call('/api/action', body, id);
 
 /** A finished ranked run saved straight into the table. */
-async function seedFinishedRun(id: string, history: RunState['history']): Promise<void> {
+async function seedFinishedRun(id: string, history: RunState['history'], extra: Partial<RunState> = {}): Promise<void> {
 	const run: RunState = {
 		...initialRunState(),
 		phase: 'finished',
@@ -59,6 +59,7 @@ async function seedFinishedRun(id: string, history: RunState['history']): Promis
 		chips: 1500,
 		round: 5,
 		history,
+		...extra,
 	};
 	await putRun(d1.db, { id, day: '2026-10-03', phase: run.phase, state: run, name: null });
 }
@@ -147,6 +148,63 @@ describe('the leaderboard', () => {
 	});
 });
 
+describe('leaderboard ties', () => {
+	const THIRD = '00000000-0000-4000-8000-000000000003';
+	const board = async (scope: 'today' | 'alltime') =>
+		((await (await call(`/api/leaderboard?scope=${scope}`)).json()) as LeaderboardView).entries.map((e) => [e.rank, e.name]);
+
+	it('ranks equal stacks by who finished first, not who submitted first', async () => {
+		const t = MIDDAY.getTime();
+		// Bob finished first but submits last; Cara finished last and submits first.
+		await seedFinishedRun(SESSION, [entry(1)], { finishedAt: t - 3000 });
+		await seedFinishedRun(OTHER, [entry(1)], { finishedAt: t - 2000 });
+		await seedFinishedRun(THIRD, [entry(1)], { finishedAt: t - 1000 });
+		vi.setSystemTime(t + 1000);
+		expect((await action({ type: 'SUBMIT_NAME', name: 'Cara' }, THIRD)).status).toBe(200);
+		vi.setSystemTime(t + 2000);
+		expect((await action({ type: 'SUBMIT_NAME', name: 'Abe' }, OTHER)).status).toBe(200);
+		vi.setSystemTime(t + 3000);
+		expect((await action({ type: 'SUBMIT_NAME', name: 'Bob' })).status).toBe(200);
+		const expected = [
+			[1, 'Bob'],
+			[2, 'Abe'],
+			[3, 'Cara'],
+		];
+		expect(await board('today')).toEqual(expected);
+		expect(await board('alltime')).toEqual(expected);
+	});
+
+	it('stamps the finish time when a played run ends, and keeps it through a later submit', async () => {
+		// The last round, one coin flip from the end of the run, win or lose.
+		const run: RunState = { ...initialRunState(), round: 5, upcoming: 'coinflip', played: ['dice', 'slots', 'craps', 'roulette'] };
+		await putRun(d1.db, { id: SESSION, day: '2026-10-03', phase: run.phase, state: run, name: null });
+		expect((await action({ type: 'BEGIN_ROUND', bet: 10 })).status).toBe(200);
+		const choosing = (await (await call('/api/state')).json()) as RunView;
+		expect((await action({ type: 'WAGER', wager: choosing.run!.current!.wager })).status).toBe(200);
+		const done = (await (await action({ type: 'FLIP' })).json()) as RunView;
+		expect(done.run?.phase).toBe('finished');
+		expect(done.run?.finishedAt).toBe(MIDDAY.getTime());
+		expect(d1.sqlite.prepare('SELECT finished_at FROM run_results').get()?.finished_at).toBe(MIDDAY.getTime());
+
+		vi.setSystemTime(MIDDAY.getTime() + 60_000);
+		expect((await action({ type: 'SUBMIT_NAME', name: 'Dee' })).status).toBe(200);
+		expect({ ...d1.sqlite.prepare('SELECT finished_at, submitted_at FROM scores').get() }).toEqual({
+			finished_at: MIDDAY.getTime(),
+			submitted_at: MIDDAY.getTime() + 60_000,
+		});
+	});
+
+	it('falls back to the recorded run result for a run saved before the stamp', async () => {
+		await seedFinishedRun(SESSION, [entry(1)]);
+		d1.sqlite
+			.prepare('INSERT INTO run_results (session_id, day, ranked, chips, bust, rounds, finished_at) VALUES (?, ?, 1, 1500, 0, ?, ?)')
+			.run(SESSION, '2026-10-03', '[]', 1234);
+		expect((await action({ type: 'SUBMIT_NAME', name: 'Eve' })).status).toBe(200);
+		expect(d1.sqlite.prepare('SELECT finished_at FROM scores').get()?.finished_at).toBe(1234);
+		expect(d1.sqlite.prepare('SELECT achieved_at FROM alltime_best').get()?.achieved_at).toBe(1234);
+	});
+});
+
 describe('the session cookie', () => {
 	it('treats a mangled cookie as no session rather than failing', async () => {
 		const request = new Request('https://gamba.test/api/state', { headers: { Cookie: 'gambadle_sid=%E0%A4%A' } });
@@ -163,5 +221,34 @@ describe('the session cookie', () => {
 		const next = await action({ type: 'BEGIN_ROUND', bet: 10 });
 		expect(next.headers.get('Set-Cookie')).toContain(encodeURIComponent(await signCookieValue(SESSION, SECRET)));
 		expect(maxAge(next)).toBeGreaterThan(7 * 86_400);
+	});
+});
+
+describe('migration 0005 (score finish times)', () => {
+	it('backfills from the ranked run result, else from submitted_at, and moves the all-time record with it', async () => {
+		const { DatabaseSync } = await import('node:sqlite');
+		const { readdirSync, readFileSync } = await import('node:fs');
+		const { join } = await import('node:path');
+		const dir = join(import.meta.dirname, '../migrations');
+		const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+		const db = new DatabaseSync(':memory:');
+		for (const file of files.filter((f) => f < '0005')) db.exec(readFileSync(join(dir, file), 'utf8'));
+
+		const score = db.prepare(
+			`INSERT INTO scores (name, name_key, day, chips, rounds_played, bust, run_id, submitted_at) VALUES (?, ?, '2026-10-03', 1500, 5, 0, ?, ?)`
+		);
+		score.run('Ann', 'ann', 'a', 900);
+		score.run('Ben', 'ben', 'b', 800);
+		db.prepare(`INSERT INTO run_results (session_id, day, ranked, chips, bust, rounds, finished_at) VALUES ('a', '2026-10-03', 1, 1500, 0, '[]', 500)`).run();
+		// An unranked result is never the submitted run.
+		db.prepare(`INSERT INTO run_results (session_id, day, ranked, chips, bust, rounds, finished_at) VALUES ('b', '2026-10-03', 0, 1500, 0, '[]', 100)`).run();
+		db.prepare(`INSERT INTO alltime_best (name_key, name, best_day, best_chips, achieved_at) VALUES ('ann', 'Ann', '2026-10-03', 1500, 900)`).run();
+
+		db.exec(readFileSync(join(dir, files.find((f) => f.startsWith('0005'))!), 'utf8'));
+		expect(db.prepare('SELECT run_id, finished_at FROM scores ORDER BY run_id').all().map((r) => ({ ...r }))).toEqual([
+			{ run_id: 'a', finished_at: 500 },
+			{ run_id: 'b', finished_at: 800 },
+		]);
+		expect(db.prepare('SELECT achieved_at FROM alltime_best').get()?.achieved_at).toBe(500);
 	});
 });

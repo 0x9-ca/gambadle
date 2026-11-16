@@ -248,6 +248,12 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 	}
 	if (action.action.type === 'START') next.eligible = ranked;
 
+	const justFinished = next.phase === 'finished' && existing?.phase !== 'finished' && !next.testGame;
+	// Stamped on the run itself so the leaderboard can break ties by it when a
+	// name is submitted later (earliest finish ranks first); the clock lives
+	// here rather than in the engine, which stays pure.
+	if (justFinished) next.finishedAt = Date.now();
+
 	// Every other action must still be acting on the run it read. A START
 	// replaces whatever is there anyway, and is left unguarded so a run start
 	// already counted above is never thrown away by a racing request.
@@ -258,7 +264,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 	// The run just ended (busted or survived): it counts toward the player's
 	// stats exactly once, whether or not a name is ever submitted.
 	// Stats are a nicety: failing to record one must not fail the action.
-	if (next.phase === 'finished' && existing?.phase !== 'finished' && !next.testGame) {
+	if (justFinished) {
 		try {
 			await recordRunResult(env.DB, {
 				sessionId: id,
@@ -267,6 +273,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 				chips: next.chips,
 				bust: next.endedBy === 'bust',
 				rounds: roundRecords(next),
+				finishedAt: next.finishedAt ?? Date.now(),
 			});
 		} catch (error) {
 			console.error(JSON.stringify({ message: 'failed to record run result', error: String(error) }));
@@ -384,6 +391,9 @@ async function submitName(
 		// same round, so a five-round run with doubles would read "7 rounds".
 		roundsPlayed: new Set(run.history.map((entry) => entry.round)).size,
 		bust: run.endedBy === 'bust',
+		// Null for a run that finished before runs carried the stamp; submitScore
+		// then falls back to the run's recorded result, or to now.
+		finishedAt: run.finishedAt ?? null,
 	});
 
 	if (!result.ok) {

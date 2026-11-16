@@ -115,14 +115,31 @@ const STATS_LIMIT = 1000;
 
 export async function recordRunResult(
 	db: D1Database,
-	row: { sessionId: string; day: string; ranked: boolean; chips: number; bust: boolean; rounds: unknown }
+	row: {
+		sessionId: string;
+		day: string;
+		ranked: boolean;
+		chips: number;
+		bust: boolean;
+		rounds: unknown;
+		/** Defaults to now; the action route passes the run's own `finishedAt` so the two agree. */
+		finishedAt?: number;
+	}
 ): Promise<void> {
 	await db
 		.prepare(
 			`INSERT INTO run_results (session_id, day, ranked, chips, bust, rounds, finished_at)
 			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
 		)
-		.bind(row.sessionId, row.day, row.ranked ? 1 : 0, row.chips, row.bust ? 1 : 0, JSON.stringify(row.rounds), Date.now())
+		.bind(
+			row.sessionId,
+			row.day,
+			row.ranked ? 1 : 0,
+			row.chips,
+			row.bust ? 1 : 0,
+			JSON.stringify(row.rounds),
+			row.finishedAt ?? Date.now()
+		)
 		.run();
 }
 
@@ -186,6 +203,8 @@ export interface ScoreInput {
 	chips: number;
 	roundsPlayed: number;
 	bust: boolean;
+	/** When the run finished, for the tiebreak; null if the run predates the stamp. */
+	finishedAt?: number | null;
 }
 
 export type SubmitResult =
@@ -194,6 +213,9 @@ export type SubmitResult =
 
 /**
  * Records a finished run on both leaderboards, atomically.
+ *
+ * The all-time row takes its `achieved_at` from the score row just written,
+ * which is the run's finish time, so both boards break ties the same way.
  *
  * The scores insert and the alltime_best upsert share a transaction, so the
  * materialized all-time board can never drift from the log it summarizes.
@@ -224,6 +246,10 @@ export async function submitScore(db: D1Database, input: ScoreInput): Promise<Su
 
 	const now = Date.now();
 	const bust = input.bust ? 1 : 0;
+	// Equal stacks rank by who finished first, not who typed a name first. A run
+	// that finished before runs carried the stamp is looked up in run_results
+	// (its ranked row for the day), as the migration backfilled older scores.
+	const finished = input.finishedAt ?? null;
 
 	// D1 has no interactive transaction API, so batch the two writes. `batch`
 	// runs them in order, as one transaction, and rejects the whole batch if
@@ -238,8 +264,12 @@ export async function submitScore(db: D1Database, input: ScoreInput): Promise<Su
 		const [scores] = await db.batch([
 			db
 				.prepare(
-					`INSERT INTO scores (name, name_key, day, chips, rounds_played, bust, run_id, submitted_at)
-					 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+					`INSERT INTO scores (name, name_key, day, chips, rounds_played, bust, run_id, submitted_at, finished_at)
+					 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, COALESCE(
+					   ?9,
+					   (SELECT MIN(finished_at) FROM run_results WHERE session_id = ?7 AND day = ?3 AND ranked = 1),
+					   ?8
+					 )
 					 WHERE NOT EXISTS (SELECT 1 FROM scores WHERE run_id = ?7 AND day = ?3)`
 				)
 				.bind(
@@ -250,15 +280,14 @@ export async function submitScore(db: D1Database, input: ScoreInput): Promise<Su
 					input.roundsPlayed,
 					bust,
 					input.runId,
-					now
+					now,
+					finished
 				),
 			db
 				.prepare(
 					`INSERT INTO alltime_best (name_key, name, best_day, best_chips, achieved_at)
-					 SELECT ?1, ?2, ?3, ?4, ?5
-					 WHERE EXISTS (
-					   SELECT 1 FROM scores WHERE run_id = ?6 AND day = ?3 AND name_key = ?1 AND submitted_at = ?5
-					 )
+					 SELECT ?1, ?2, ?3, ?4, finished_at FROM scores
+					 WHERE run_id = ?6 AND day = ?3 AND name_key = ?1 AND submitted_at = ?5
 					 ON CONFLICT(name_key) DO UPDATE SET
 					   name = excluded.name,
 					   best_day = excluded.best_day,
@@ -298,7 +327,13 @@ interface ScoreRow {
 /**
  * Today's board, or the all-time board.
  *
- * Both are indexed top-N lookups: today reads idx_scores_day_chips, all-time
+ * Equal stacks rank by when the run finished, earliest first, on both boards:
+ * today's by the score's `finished_at`, all-time by `achieved_at`, which is the
+ * finish time of the run that set the record (a later run that only matches it
+ * does not replace it). A last key keeps ranks distinct and stable even for two
+ * finishes in the same millisecond; there are no joint ranks.
+ *
+ * Both are indexed top-N lookups: today reads idx_scores_day_rank, all-time
  * reads idx_alltime_best_chips. Neither degrades as history accumulates.
  */
 export async function getLeaderboard(
@@ -313,9 +348,9 @@ export async function getLeaderboard(
 			? await db
 					.prepare(
 						`SELECT name, chips, day,
-						        rounds_played, bust, submitted_at AS achieved_at
+						        rounds_played, bust, COALESCE(finished_at, submitted_at) AS achieved_at
 						 FROM scores WHERE day = ?1
-						 ORDER BY chips DESC, submitted_at ASC LIMIT ?2`
+						 ORDER BY chips DESC, finished_at ASC, id ASC LIMIT ?2`
 					)
 					.bind(day, LEADERBOARD_LIMIT)
 					.all<ScoreRow>()
@@ -324,7 +359,7 @@ export async function getLeaderboard(
 						`SELECT name, best_chips AS chips, best_day AS day,
 						        NULL AS rounds_played, NULL AS bust, achieved_at
 						 FROM alltime_best
-						 ORDER BY best_chips DESC, achieved_at ASC LIMIT ?1`
+						 ORDER BY best_chips DESC, achieved_at ASC, name_key ASC LIMIT ?1`
 					)
 					.bind(LEADERBOARD_LIMIT)
 					.all<ScoreRow>();

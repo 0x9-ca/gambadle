@@ -12,7 +12,7 @@ For full project details, read **AGENTS.md** first. This file is a concise execu
 2. **Honor shared contracts.** Start from `shared/protocol.ts` + `shared/games.ts` before edits.
 3. **Preserve chip accounting semantics.** `returned` includes stake on wins/pushes.
 4. **Do not regress hidden info.** Dealer hole-card value must remain hidden pre-resolution.
-5. **Keep the daily seed deterministic.** Ranked runs draw only via `worker/rng` in `init`/single-roll `apply`; see AGENTS.md "Daily seed".
+5. **Same games, own outcomes, deterministic draws.** Ranked runs share the day's games (`drawShared`) but every outcome draw also mixes in the run's stored `nonce` (`draw`). Games draw only via `worker/rng` in `init`/single-roll `apply`; see AGENTS.md "Daily seed".
 6. **Run full validation before done.**
 
 ---

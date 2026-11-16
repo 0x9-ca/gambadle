@@ -18,7 +18,7 @@ import {
 	type GameId,
 	type RunState,
 } from '../shared/protocol';
-import { applyAction, chooseGame, defaultWager, totalWagered } from '../worker/engine';
+import { applyAction, chooseGame, defaultWager, publicRun, totalWagered } from '../worker/engine';
 import { gameById } from '../worker/games';
 import { GameError } from '../worker/games/types';
 import { setSeed } from './helpers/seeded-rng';
@@ -556,67 +556,124 @@ describe('totalWagered', () => {
 });
 
 describe('daily seed', () => {
-	const play = (ambient: number, seed: string | null, secret = '') => {
-		setSeed(ambient);
-		const act = (run: RunState | null, action: Action) => applyAction(run, action, null, secret);
-		let run = applyAction(null, { type: 'START' }, seed, secret);
-		for (let guard = 0; guard < 200 && run.phase !== 'finished'; guard++) {
-			if (run.phase === 'betting') {
-				run = act(run, { type: 'BEGIN_ROUND', bet: 10 });
-				run = act(run, { type: 'WAGER', wager: run.current!.wager });
-			} else if (run.phase === 'in_game') {
-				const legal = gameById(run.current!.game).legalActions(run.current!.state);
-				run = act(run, { type: legal.includes('NO_INSURANCE') ? 'NO_INSURANCE' : legal[0]! } as Action);
-			} else if (run.phase === 'don_offer') run = act(run, { type: 'DON_DECLINE' });
-			else break;
-		}
-		return run.history.map((r) => [r.game, r.net, r.detail]);
+	const act = (run: RunState | null, action: Action, secret = 's') => applyAction(run, action, null, secret);
+
+	/** The next action a simple player takes: bet 10, take the default wager, decline doubles. */
+	const simple = (legal: string[]) => (legal.includes('NO_INSURANCE') ? 'NO_INSURANCE' : legal[0]!);
+	const nextAction = (run: RunState, pickAction: (legal: string[]) => string = simple): Action[] => {
+		if (run.phase === 'betting') return [{ type: 'BEGIN_ROUND', bet: 10 }];
+		if (run.phase === 'choosing') return [{ type: 'WAGER', wager: run.current!.wager }];
+		if (run.phase === 'don_offer') return [{ type: 'DON_DECLINE' }];
+		if (run.phase !== 'in_game') return [];
+		const legal = gameById(run.current!.game).legalActions(run.current!.state);
+		const type = pickAction(legal);
+		// Pai Gow's SET_HAND names the low hand; play the one the view suggests.
+		const view = run.current!.view as { houseWay?: number[] };
+		return [(type === 'SET_HAND' ? { type, low: view.houseWay } : { type }) as Action];
 	};
 
-	it('deals every ranked player the same run, whatever the ambient randomness', () => {
-		expect(play(1, '2026-10-03', 's')).toEqual(play(999, '2026-10-03', 's'));
+	/** Plays a run from `start` to the end and returns its finished boards. */
+	const playFrom = (start: RunState, ambient: number, secret = 's', pickAction?: (legal: string[]) => string) => {
+		setSeed(ambient);
+		let run = start;
+		for (let guard = 0; guard < 200 && run.phase !== 'finished'; guard++) {
+			const [action] = nextAction(run, pickAction);
+			if (!action) break;
+			run = act(run, action, secret);
+		}
+		return run;
+	};
+
+	const play = (ambient: number, seed: string | null, secret = 's') => {
+		setSeed(ambient);
+		return playFrom(applyAction(null, { type: 'START' }, seed, secret), ambient, secret);
+	};
+	const games = (run: RunState) => run.history.map((r) => r.game);
+	const outcomes = (run: RunState) => run.history.map((r) => JSON.stringify(r.view));
+
+	it('gives every ranked run of the day the same games, whatever the ambient randomness', () => {
+		const a = play(1, '2026-10-03');
+		const b = play(999, '2026-10-03');
+		expect(a.history.length).toBeGreaterThan(0);
+		expect(games(b)).toEqual(games(a));
 	});
 
-	it('differs between days', () => {
-		expect(play(1, '2026-10-03', 's')).not.toEqual(play(1, '2026-10-04', 's'));
+	// The owner's rule: same lineup, but one player's deals, spins and rolls
+	// say nothing about another's.
+	it('deals each ranked run its own outcomes', () => {
+		const a = play(1, '2026-10-03');
+		const b = play(1, '2026-10-03');
+		expect(a.nonce).toBeTruthy();
+		expect(b.nonce).not.toBe(a.nonce);
+		expect(outcomes(b)).not.toEqual(outcomes(a));
+	});
+
+	// A retried request (or the same stored state replayed) must not reroll:
+	// every draw comes from the run's stored seed and nonce plus a label.
+	it("keeps one run's draws stable however often a step is replayed", () => {
+		let run = applyAction(null, { type: 'START' }, '2026-10-03', 's');
+		for (let guard = 0; guard < 200 && run.phase !== 'finished'; guard++) {
+			const [action] = nextAction(run);
+			if (!action) break;
+			setSeed(guard);
+			const once = act(run, action);
+			setSeed(guard + 1000);
+			const again = act(run, action);
+			expect(again).toEqual(once);
+			run = once;
+		}
+		expect(run.phase).toBe('finished');
+		// And the whole run replays identically from its start.
+		const start = applyAction(null, { type: 'START' }, '2026-10-03', 's');
+		expect(outcomes(playFrom(start, 5))).toEqual(outcomes(playFrom(start, 6)));
+	});
+
+	it('changes the games between days', () => {
+		expect(games(play(1, '2026-10-03'))).not.toEqual(games(play(1, '2026-10-04')));
 	});
 
 	it('cannot be predicted from the date without the server secret', () => {
-		expect(play(1, '2026-10-03', 's')).not.toEqual(play(1, '2026-10-03', 'other'));
+		expect(games(play(1, '2026-10-03', 's'))).not.toEqual(games(play(1, '2026-10-03', 'other')));
 	});
 
-	it('leaves unseeded runs random', () => {
-		expect(play(1, null)).not.toEqual(play(999, null));
+	it('leaves unseeded runs random and without a nonce', () => {
+		const run = play(1, null);
+		expect(run.nonce).toBeUndefined();
+		expect(outcomes(run)).not.toEqual(outcomes(play(999, null)));
 	});
 
-	// Guards the "same for everyone" promise against a new random draw that
-	// depends on what the player does: two players who choose differently must
-	// still see identical deals, and identical rolls for single-roll games.
+	it('keeps a ranked run saved before nonces existed on its day-only draws', () => {
+		const legacy = (ambient: number) => {
+			const start = applyAction(null, { type: 'START' }, '2026-10-03', 's');
+			delete start.nonce;
+			return playFrom(start, ambient);
+		};
+		expect(outcomes(legacy(2))).toEqual(outcomes(legacy(3)));
+	});
+
+	it('never sends the nonce to the client', () => {
+		const run = applyAction(null, { type: 'START' }, '2026-10-03', 's');
+		expect(run.nonce).toBeTruthy();
+		expect(publicRun(run)).not.toHaveProperty('nonce');
+	});
+
+	// Guards the draws against a new random draw that depends on what the player
+	// does: from the same start (same nonce), two players who choose differently
+	// must still see identical deals, and identical rolls for single-roll games.
 	it('draws the same deals and rolls whatever the player chooses', () => {
 		const SINGLE_ROLL = ['roulette', 'dice', 'slots', 'coinflip'];
+		const start = applyAction(null, { type: 'START' }, '2026-10-03', 's');
 		const trace = (pickAction: (legal: string[]) => string, ambient: number) => {
 			setSeed(ambient);
 			const deals: string[] = [];
-			const rolls: string[] = [];
-			const act = (run: RunState | null, action: Action) => applyAction(run, action, null, 's');
-			let run = applyAction(null, { type: 'START' }, '2026-10-03', 's');
+			let run = start;
 			for (let guard = 0; guard < 200 && run.phase !== 'finished'; guard++) {
-				if (run.phase === 'betting') {
-					run = act(run, { type: 'BEGIN_ROUND', bet: 10 });
-					run = act(run, { type: 'WAGER', wager: run.current!.wager });
-					deals.push(`${run.current?.game}:${JSON.stringify(run.current?.state ?? null)}`);
-				} else if (run.phase === 'in_game') {
-					const legal = gameById(run.current!.game).legalActions(run.current!.state);
-					const type = pickAction(legal);
-					// Pai Gow's SET_HAND names the low hand; play the one the view suggests.
-					const view = run.current!.view as { houseWay?: number[] };
-					run = act(run, (type === 'SET_HAND' ? { type, low: view.houseWay } : { type }) as Action);
-				} else if (run.phase === 'don_offer') run = act(run, { type: 'DON_DECLINE' });
-				else break;
+				const [action] = nextAction(run, pickAction);
+				if (!action) break;
+				run = act(run, action);
+				if (action.type === 'WAGER') deals.push(`${run.current?.game}:${JSON.stringify(run.current?.state ?? null)}`);
 			}
-			for (const r of run.history) {
-				if (SINGLE_ROLL.includes(r.game)) rolls.push(`${r.game}:${JSON.stringify(r.view)}`);
-			}
+			const rolls = run.history.filter((r) => SINGLE_ROLL.includes(r.game)).map((r) => `${r.game}:${JSON.stringify(r.view)}`);
 			return { deals, rolls };
 		};
 		const first = trace((legal) => legal[0]!, 1);

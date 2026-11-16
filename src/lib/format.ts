@@ -88,8 +88,9 @@ const square = (net: number): string => (net > 0 ? '🟩' : net < 0 ? '🟥' : '
 
 /**
  * The text a finished run shares: the day, the final stack, then one line per
- * round. Every ranked player gets the same games each day, so the lines line
- * up with anyone else's share from the same day.
+ * round. Every ranked player gets the same games each day, so the lines line up
+ * game for game with anyone else's share from that day; the results are this
+ * player's own (outcomes are drawn per run), so sharing them spoils nothing.
  */
 export function shareText(run: RunState, origin: string): string {
 	const net = run.chips - STARTING_CHIPS;

@@ -3,7 +3,8 @@
  */
 
 import { useState } from 'react';
-import { STARTING_CHIPS, TOTAL_ROUNDS, type RunState } from '../../shared/protocol';
+import { CRAPS_MAX_ODDS, UTH_MAX_ANTES } from '../../shared/games';
+import { STARTING_CHIPS, TOTAL_ROUNDS, type RunState, type Wager } from '../../shared/protocol';
 import { doubledLabel, formatChips, formatDelta, roundsOf, SHORT_TITLE, shareText } from '../lib/format';
 import { loadName } from '../lib/savedName';
 import { Daily } from './Daily';
@@ -36,7 +37,7 @@ export function DoubleOrNothing({
 			</h2>
 			<p className="panel__sub">
 				Replay {last ? titleFor(last.game) : 'the round'} with {formatChips(run.current?.bet ?? 0)} chips on the line —
-				your bet plus what you just won. Lose it and the rest of your stack is untouched.
+				your bet plus what you just won. {run.current ? doubleRisk(run.current.wager, run.current.bet) : null}
 			</p>
 
 			<p className="don__stack">
@@ -58,6 +59,44 @@ export function DoubleOrNothing({
 			</p>
 		</div>
 	);
+}
+
+/**
+ * What a replay can cost beyond the amount on offer. The replay keeps the
+ * round's wager shape (engine `rebaseWager`), so games whose play adds bets
+ * (a Play bet, a Blind and raise, odds, doubles and splits) or that carry a
+ * side bet can lose more than the offer; only the rest stays out of it.
+ * Side bets are not quantified here: the engine trims them to the stack.
+ */
+function doubleRisk(wager: Wager, bet: number): string {
+	const safe = 'Lose it and the rest of your stack is untouched.';
+	const rides = (name: string) => `Your ${name} bet rides again too, if your stack still covers it.`;
+	switch (wager.game) {
+		case 'threecard':
+			return [
+				`That is the ante: playing the hand adds a matching ${formatChips(bet)} Play bet, so up to ${formatChips(bet * 2)} chips can go.`,
+				wager.bet.pairPlus ? rides('Pair Plus') : '',
+			].join(' ').trim();
+		case 'ultimate':
+			return [
+				`That is the ante, with a matching Blind beside it, and a raise can add up to ${formatChips(bet * 4)} more, so up to ${formatChips(bet * UTH_MAX_ANTES)} chips can go.`,
+				wager.bet.trips ? rides('Trips') : '',
+			].join(' ').trim();
+		case 'craps':
+			return [
+				`Taking odds on a point can add up to ${formatChips(bet * CRAPS_MAX_ODDS)} more, so up to ${formatChips(bet * (1 + CRAPS_MAX_ODDS))} chips can go.`,
+				wager.bet.field ? rides('Field') : '',
+			].join(' ').trim();
+		case 'blackjack':
+			return [
+				'Doubling down, splitting or insuring puts more of your stack at risk; otherwise, lose it and the rest is untouched.',
+				wager.trilux ? rides('TriLux') : '',
+			].join(' ').trim();
+		case 'baccarat':
+			return wager.bet.pair !== undefined ? `${rides('pair')} Beyond that, the rest of your stack is untouched.` : safe;
+		default:
+			return safe;
+	}
 }
 
 // ---------------------------------------------------------------------------
