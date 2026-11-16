@@ -959,6 +959,21 @@ describe('blackjack', () => {
 			expect(() => handler.apply(s, { type: 'DOUBLE' })).toThrow(GameError);
 		});
 
+		it('doubles for less with whatever the stack has left', () => {
+			// Half a bet left over: the double adds that, takes one card and stands.
+			const extra = Math.floor(BET / 2);
+			const s = stacked([5, 6], [10, 7], [10], BET + extra);
+			expect(viewOf<Extract<GameView, { game: 'blackjack' }>>(handler.view(s))).toMatchObject({ canDouble: true, doubleFor: extra });
+			const step = handler.apply(s, { type: 'DOUBLE' });
+			expect(viewOf<Extract<GameView, { game: 'blackjack' }>>(step.view).hands[0]).toMatchObject({ bet: BET + extra, doubled: true });
+			expect(step.outcome).toEqual({ stake: BET + extra, returned: (BET + extra) * 2, detail: 'You win with 21' });
+		});
+
+		it('offers a full double for the whole bet when the stack covers it', () => {
+			const s = stacked([5, 6], [10, 7], [10]);
+			expect(viewOf<Extract<GameView, { game: 'blackjack' }>>(handler.view(s)).doubleFor).toBe(BET);
+		});
+
 		it('only offers a double on the first two cards', () => {
 			const s = stacked([2, 3], [10, 7], [2, 9]);
 			handler.apply(s, { type: 'HIT' });
@@ -1166,6 +1181,32 @@ describe('blackjack', () => {
 				expect(viewOf<BlackjackGameView>(step.view).canDouble).toBe(false);
 				expect(handler.legalActions(s)).not.toContain('DOUBLE');
 				expect(() => handler.apply(s, { type: 'DOUBLE' })).toThrow(GameError);
+			});
+
+			it('resplits aces when a split ace draws another ace', () => {
+				// A-A splits; the first ace draws an ace, so that hand may split again.
+				const s = stacked([1, 1], [10, 7], [1, 9, 8, 7]);
+				let step = handler.apply(s, { type: 'SPLIT' });
+				let v = viewOf<BlackjackGameView>(step.view);
+				expect(v.hands).toHaveLength(2);
+				expect(v.canHit).toBe(false);
+				expect(v.canDouble).toBe(false);
+				expect(handler.legalActions(s)).toEqual(['STAND', 'SPLIT']);
+				expect(() => handler.apply(s, { type: 'HIT' })).toThrow(GameError);
+				step = handler.apply(s, { type: 'SPLIT' });
+				// Three hands, each an ace with one card: A+8, A+7 and the original A+9.
+				expect(step.outcome).not.toBeNull();
+				v = viewOf<BlackjackGameView>(step.view);
+				expect(v.hands).toHaveLength(3);
+				expect(step.outcome).toMatchObject({ stake: BET * 3 });
+			});
+
+			it('stands a split-ace pair that cannot be resplit', () => {
+				// Exactly two bets' worth of chips: no third hand can be covered.
+				const s = stacked([1, 1], [10, 7], [1, 9], BET * 2);
+				const step = handler.apply(s, { type: 'SPLIT' });
+				expect(step.outcome).not.toBeNull();
+				expect(handler.legalActions(s)).toEqual([]);
 			});
 
 			it('never doubles split aces', () => {
