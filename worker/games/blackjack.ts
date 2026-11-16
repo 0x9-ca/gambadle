@@ -18,10 +18,12 @@
  * exactly insurance on a blackjack, but it costs nothing extra, so it is offered
  * whatever the stack. The hole card stays down until the player answers.
  *
- * Doubling doubles that hand's bet and takes exactly one card. A split turns a
+ * Doubling doubles that hand's bet and takes exactly one card; a stack that
+ * cannot match the bet doubles for less, adding whatever chips remain. A split turns a
  * pair (any two 10-value cards count as a pair) into two hands at the original
  * bet each, up to four hands. A split hand may double on its first two cards.
- * Split aces get one card apiece and stand (so they cannot double), and 21 on a
+ * Split aces get one card apiece and stand (so they cannot hit or double); an
+ * ace dealt to a split ace may be resplit, up to the same four hands. 21 on a
  * split hand is an ordinary 21, not a blackjack.
  *
  * `Outcome` amounts are absolute chips, so each game stores its own bets in
@@ -46,13 +48,18 @@ const MAX_HANDS = 4;
 
 interface PlayerHand {
 	cards: Card[];
-	/** Chips on this hand, doubled if it was doubled down. */
+	/** Chips on this hand, including what a double added (possibly less than the bet). */
 	bet: number;
 	doubled: boolean;
 	/** Came from a split, so 21 is not a natural. */
 	split: boolean;
 	/** No further action: stood, doubled, bust or on 21. */
 	stood: boolean;
+	/**
+	 * Came from splitting aces. Such a hand never hits or doubles; it stands on
+	 * its one card unless that card is another ace, when it may split again.
+	 */
+	splitAces?: boolean;
 }
 
 interface BlackjackState {
@@ -160,8 +167,17 @@ function canDouble(s: BlackjackState): boolean {
 	const hand = s.hands[s.active];
 	// Any two-card hand may double, a split one included; split aces are already
 	// stood, which is what keeps them from doubling.
-	if (!hand || hand.stood || hand.cards.length !== 2 || handTotal(hand.cards).total >= 21) return false;
-	return s.stack - committed(s) >= hand.bet;
+	if (!hand || hand.stood || hand.splitAces || hand.cards.length !== 2 || handTotal(hand.cards).total >= 21) return false;
+	return doubleAmount(s) >= 1;
+}
+
+/**
+ * What a double adds to the active hand: the hand's bet, or "double for less"
+ * with whatever chips remain when the stack cannot match it in full.
+ */
+function doubleAmount(s: BlackjackState): number {
+	const hand = s.hands[s.active];
+	return hand ? Math.max(0, Math.min(hand.bet, s.stack - committed(s))) : 0;
 }
 
 function canSplit(s: BlackjackState): boolean {
@@ -177,7 +193,17 @@ function canSplit(s: BlackjackState): boolean {
  * when there is none.
  */
 function advance(s: BlackjackState): Step {
-	while (s.active < s.hands.length && s.hands[s.active]!.stood) s.active++;
+	for (;;) {
+		while (s.active < s.hands.length && s.hands[s.active]!.stood) s.active++;
+		// A split-ace pair waits only if it can actually be resplit (hand cap and
+		// stack); otherwise it stands like any other split ace.
+		const hand = s.hands[s.active];
+		if (hand?.splitAces && !canSplit(s)) {
+			hand.stood = true;
+			continue;
+		}
+		break;
+	}
 	if (s.active >= s.hands.length) {
 		s.active = s.hands.length - 1;
 		return finish(s);
@@ -265,7 +291,9 @@ function view(s: BlackjackState): GameView {
 		player: hands[s.active] ?? hands[0]!,
 		hands,
 		active: s.active,
+		canHit: !s.hands[s.active]?.splitAces,
 		canDouble: canDouble(s),
+		doubleFor: canDouble(s) ? doubleAmount(s) : 0,
 		canSplit: canSplit(s),
 		// Even money costs nothing, so it is not priced as insurance.
 		insuranceOffer: s.insuranceOffer && !evenMoneyOffered(s) ? insuranceCost(s) : null,
@@ -345,6 +373,8 @@ export const blackjack: GameHandler = {
 		const s = state as BlackjackState;
 		if (s.done) return [];
 		if (s.insuranceOffer) return ['INSURE', 'NO_INSURANCE'];
+		// A split-ace pair may only resplit or stand.
+		if (s.hands[s.active]?.splitAces) return canSplit(s) ? ['STAND', 'SPLIT'] : ['STAND'];
 		const actions: Array<'HIT' | 'STAND' | 'DOUBLE' | 'SPLIT'> = ['HIT', 'STAND'];
 		if (canDouble(s)) actions.push('DOUBLE');
 		if (canSplit(s)) actions.push('SPLIT');
@@ -378,6 +408,7 @@ export const blackjack: GameHandler = {
 
 		switch (action.type) {
 			case 'HIT':
+				if (hand.splitAces) throw new GameError('illegal_action', 'split aces take one card');
 				hand.cards.push(draw(s.shoe));
 				// 21 or bust ends the hand; 21 is not a natural unless it arrived
 				// on the first two cards.
@@ -390,7 +421,7 @@ export const blackjack: GameHandler = {
 
 			case 'DOUBLE':
 				if (!canDouble(s)) throw new GameError('illegal_action', 'cannot double this hand');
-				hand.bet *= 2;
+				hand.bet += doubleAmount(s);
 				hand.doubled = true;
 				hand.cards.push(draw(s.shoe));
 				hand.stood = true;
@@ -405,13 +436,16 @@ export const blackjack: GameHandler = {
 					bet: hand.bet,
 					doubled: false,
 					split: true,
-					// Split aces take one card each and stand.
-					stood: aces,
+					// Split aces take one card each and stand, unless that card is
+					// another ace: then the pair may be resplit (see advance).
+					stood: false,
+					splitAces: aces,
 				});
 				const left = make(first);
 				const right = make(second);
 				for (const h of [left, right]) {
 					if (handTotal(h.cards).total >= 21) h.stood = true;
+					if (aces && h.cards[1]!.rank !== 1) h.stood = true;
 				}
 				s.hands.splice(s.active, 1, left, right);
 				return advance(s);

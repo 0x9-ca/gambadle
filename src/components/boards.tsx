@@ -211,9 +211,17 @@ function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>)
 				</>
 			) : !view.resolved ? (
 				<Actions>
-					{button('HIT', 'Hit', true)}
+					{view.canHit !== false ? button('HIT', 'Hit', true) : null}
 					{button('STAND', 'Stand')}
-					{view.canDouble ? button('DOUBLE', 'Double') : null}
+					{view.canDouble
+						? button(
+								'DOUBLE',
+								// Name the amount when the stack can only part-match the bet.
+								view.doubleFor !== undefined && view.doubleFor < (view.hands[view.active]?.bet ?? 0)
+									? `Double for ${chipCount(view.doubleFor)}`
+									: 'Double'
+							)
+						: null}
 					{view.canSplit ? button('SPLIT', 'Split') : null}
 				</Actions>
 			) : null}

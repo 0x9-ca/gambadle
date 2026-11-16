@@ -216,7 +216,15 @@ export type GameView = GameViewBase &
 				hands: HandView[];
 				/** Index into `hands` of the hand awaiting action. */
 				active: number;
+				/** False on a split-ace pair, which may only resplit or stand. Absent means true. */
+				canHit?: boolean;
 				canDouble: boolean;
+				/**
+				 * Chips a double would add: the hand's bet, or less when the stack
+				 * cannot match it (double for less). 0 when no double is allowed.
+				 * Absent on views saved before it existed.
+				 */
+				doubleFor?: number;
 				canSplit: boolean;
 				/** Cost of insurance while it is on offer (dealer shows an ace), else null. */
 				insuranceOffer: number | null;
