@@ -513,7 +513,7 @@ describe('dice', () => {
 				wins++;
 				expect(v.roll).toBeLessThanOrEqual(target);
 				expect(outcome.stake).toBe(BET);
-				expect(outcome.returned).toBe(Math.floor(BET * multiplier));
+				expect(outcome.returned).toBe(Math.ceil(BET * multiplier - 1e-9));
 			} else {
 				expect(v.roll).toBeGreaterThan(target);
 				expect(outcome.returned).toBe(0);
@@ -574,19 +574,144 @@ describe('dice', () => {
 		expect(() => handler.apply(step.state, { type: 'SPIN' })).toThrow(GameError);
 	});
 
-	it('pays whole hundredths exactly, without a floating-point chip short', () => {
+	/** Plays one winning roll: a draw of 0 rolls double one, which wins at every target. */
+	const winOf = (target: number, bet: number): Outcome => {
+		const parsed = handler.parseWager({ game: 'dice', bet: { kind: 'roll_under', target } }, bet, HUGE_STACK);
+		const step = handler.init(parsed, bet, HUGE_STACK);
+		return withRng(() => 0, () => handler.apply(step.state, { type: 'ROLL' })).outcome!;
+	};
+
+	it('rounds a win up to whole chips, exactly in hundredths', () => {
 		// 100 * 2.32 and 100 * 1.16 are a hair under the integer in floating
-		// point, which used to floor a winning 100-chip bet one chip short.
+		// point; exact hundredths keep a whole result from rounding a chip over.
 		for (let target = DICE_MIN_TARGET; target <= DICE_MAX_TARGET; target++) {
 			const hundredths = Math.round(rollUnderMultiplier(target) * 100);
-			for (const bet of [1, 25, 100, 375, 1000]) {
-				const parsed = handler.parseWager({ game: 'dice', bet: { kind: 'roll_under', target } }, bet, HUGE_STACK);
-				const step = handler.init(parsed, bet, HUGE_STACK);
-				// A draw of 0 rolls double one, which wins at every target.
-				const { outcome } = withRng(() => 0, () => handler.apply(step.state, { type: 'ROLL' }));
-				expect(outcome!.returned).toBe(Math.floor((bet * hundredths) / 100));
+			for (const bet of [1, 3, 25, 100, 375, 1000]) {
+				expect(winOf(target, bet).returned).toBe(Math.ceil((bet * hundredths) / 100));
 			}
 		}
+		// The owner's call: a 1-chip win on 8 or 9 used to hand back only the stake.
+		expect(winOf(8, 1).returned).toBe(2);
+		expect(winOf(9, 1).returned).toBe(2);
+		expect(winOf(6, 100).returned).toBe(232); // exact: no rounding
+		expect(winOf(9, 100).returned).toBe(116);
+		expect(winOf(5, 10).returned).toBe(35); // 34.9 rounds up
+		expect(winOf(5, 10).detail).toBe('Rolled 2, needed 5 or under — you win 25 chips (pays 2.49:1, rounded up)');
+		expect(winOf(6, 100).detail).toBe('Rolled 2, needed 6 or under — you win 132 chips (pays 1.32:1)');
+	});
+
+	it('has an exact house edge per target that rounding up only ever trims', () => {
+		// Exact over the 36 rolls for every bet size: the edge never exceeds the
+		// multiplier's own and, from 20 chips up, is never a player edge. Below
+		// that, rounding a fraction of a chip up can favour the player on the
+		// high targets (a 1-chip bet on 9 returns 2 at 30/36 odds).
+		const limits: Record<number, number> = { 2: 3, 3: 3, 4: 3, 5: 3.056, 6: 3.333, 7: 3.167, 8: 3.222, 9: 3.333 };
+		for (let target = DICE_MIN_TARGET; target <= DICE_MAX_TARGET; target++) {
+			const ways = rollUnderWays(target);
+			const hundredths = Math.round(rollUnderMultiplier(target) * 100);
+			const limit = 1 - (ways * hundredths) / (DICE_COMBOS * 100);
+			expect(limit * 100).toBeCloseTo(limits[target]!, 3);
+			for (let bet = 1; bet <= 2_000; bet++) {
+				const edge = 1 - (ways * Math.ceil((bet * hundredths) / 100)) / (DICE_COMBOS * bet);
+				expect(edge).toBeLessThanOrEqual(limit + 1e-12);
+				if (bet >= 20) expect(edge).toBeGreaterThanOrEqual(-1e-12);
+			}
+		}
+		// The worst small-bet case, pinned so a change to it is deliberate.
+		expect(1 - (rollUnderWays(9) * 2) / DICE_COMBOS).toBeCloseTo(-2 / 3, 9);
+	});
+
+	it('shows the target and the bet in the view, and says what was rolled against what', () => {
+		const parsed = handler.parseWager({ game: 'dice', bet: { kind: 'roll_under', target: 5 } }, 40, HUGE_STACK);
+		const step = handler.init(parsed, 40, HUGE_STACK);
+		expect(step.view).toMatchObject({ game: 'dice', target: 5, bet: 40, resolved: false });
+		// A draw just under 1 rolls double six, which loses at every target.
+		const lost = withRng(() => 0.999, () => handler.apply(step.state, { type: 'ROLL' }));
+		expect(lost.view).toMatchObject({ target: 5, bet: 40, roll: 12, won: false });
+		expect(lost.outcome).toEqual({ stake: 40, returned: 0, detail: 'Rolled 12, needed 5 or under — you lose' });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Result text
+// ---------------------------------------------------------------------------
+
+describe('result text', () => {
+	it('roulette gives every spot its chips, so an amount never reads as a number', () => {
+		const handler = gameById('roulette');
+		const wager: Wager = {
+			game: 'roulette',
+			bets: [
+				{ bet: { kind: 'red' }, amount: 10 },
+				{ bet: { kind: 'straight', number: 3 }, amount: 1 },
+				{ bet: { kind: 'dozen', dozen: 1 }, amount: 5 },
+			],
+		};
+		const step = handler.init(handler.parseWager(wager, BET, HUGE_STACK), BET, HUGE_STACK);
+		// randomInt(37) floors the draw times 37, so this lands on 14 (red, 2nd dozen).
+		const spun = withRng(() => 14.5 / 37, () => handler.apply(step.state, { type: 'SPIN' }));
+		expect(spun.outcome!.detail).toBe(
+			'14 red — won: 10 chips on red; lost: 1 chip straight up on 3, 5 chips on the 1st dozen'
+		);
+	});
+
+	it('baccarat names the winner and its total once, then how each bet did', () => {
+		const handler = gameById('baccarat');
+		for (const main of ['player', 'banker', 'tie'] as const) {
+			for (let i = 0; i < 300; i++) {
+				const wager: Wager = { game: 'baccarat', bet: { main, pair: 'player' } };
+				let step = handler.init(handler.parseWager(wager, BET, HUGE_STACK), BET, HUGE_STACK);
+				if (!step.outcome) step = handler.apply(step.state, { type: 'DEAL' });
+				const v = viewOf<BaccaratView>(step.view);
+				const p = v.player.total;
+				const b = v.banker.total;
+				const head = v.outcome === 'tie' ? `Tie at ${p}` : v.outcome === 'player' ? `Player wins ${p} to ${b}` : `Banker wins ${b} to ${p}`;
+				const name = main === 'player' ? 'Player' : main === 'banker' ? 'Banker' : 'Tie';
+				const verdict =
+					main === v.outcome
+						? main === 'banker'
+							? 'Banker bet pays 1:1 less 5% commission'
+							: `${name} bet pays ${main === 'tie' ? 8 : 1}:1`
+						: v.outcome === 'tie'
+							? `${name} bet pushes`
+							: `${name} bet loses`;
+				const pair = v.playerPair ? 'Player Pair pays 11:1' : 'Player Pair loses';
+				expect(step.outcome!.detail).toBe(`${head} — ${verdict}, ${pair}`);
+			}
+		}
+	});
+
+	describe('three card poker', () => {
+		const handler = gameById('threecard');
+		const hand = (text: string): Card[] =>
+			text.split(' ').map((t) => card(t.slice(0, -1), t.slice(-1) as SuitName));
+		/** Plays a rigged hand: the dealer's three cards are the next ones in the shoe. */
+		const play = (player: string, dealer: string, type: 'PLAY' | 'FOLD' = 'PLAY', pairPlus?: number) => {
+			const step = handler.init(handler.parseWager(tcpWager(pairPlus), BET, HUGE_STACK), BET, HUGE_STACK);
+			const s = step.state as { player: Card[]; shoe: { cards: Card[]; pos: number } };
+			s.player = hand(player);
+			s.shoe = { cards: hand(dealer), pos: 0 };
+			return handler.apply(s, { type }).outcome!;
+		};
+
+		it('says each hand once and who won, with the kicker when the names match', () => {
+			// The old text: "Dealer Pair of 8s, Pair of 8s wins".
+			expect(play('8s 8h Kd', '8d 8c 5s').detail).toBe('Dealer: Pair of 8s. You: Pair of 8s, kicker K — you win');
+			expect(play('8s 8h 5d', '8d 8c Ks').detail).toBe('Dealer: Pair of 8s, kicker K. You: Pair of 8s — dealer wins');
+			expect(play('As Kh 9d', 'Ad Kc 4s').detail).toBe('Dealer: A high. You: A high, kicker 9 — you win');
+			expect(play('Qs Qh 9d', 'Qd Qc 9s').detail).toBe('Dealer: Pair of Queens. You: Pair of Queens — a tie, bets returned');
+			expect(play('2s 2h 9d', 'Jd 7c 4s').detail).toBe(
+				'Dealer: J high, does not qualify. You: Pair of 2s — ante pays 1:1, Play pushes'
+			);
+		});
+
+		it('names the side bets plainly, and plural ranks in full', () => {
+			expect(play('As Ah Ad', 'Kd Kc 4s', 'PLAY', 10).detail).toBe(
+				'Dealer: Pair of Kings. You: Three Aces — you win. Pair Plus pays 30:1. Ante Bonus pays 4:1'
+			);
+			expect(play('9s 5h 2d', 'Kd Kc 4s', 'FOLD', 10).detail).toBe('You folded 9 high. Pair Plus loses');
+			expect(play('9s 5h 2d', 'Kd Kc 4s', 'FOLD').detail).toBe('You folded 9 high');
+		});
 	});
 });
 
@@ -910,7 +1035,13 @@ describe('blackjack', () => {
 				const s = step.state as any;
 				const dealerNatural = s.dealer.length === 2 && handTotalOf(s.dealer) === 21;
 				const playerNatural = handTotalOf(s.hands[0].cards) === 21;
-				if (playerNatural) {
+				if (playerNatural && s.dealer[0].rank === 1) {
+					// Even money is offered instead, with nothing of the hole card shown.
+					expect(step.outcome).toBeNull();
+					expect(v.insuranceOffer).toBeNull();
+					expect((v as { evenMoneyOffer?: boolean }).evenMoneyOffer).toBe(true);
+					expect(v.dealer.hidden).toBe(true);
+				} else if (playerNatural) {
 					playerBJ++;
 					expect(step.outcome).not.toBeNull();
 					expect(v.opening).toBe(true);
@@ -931,6 +1062,132 @@ describe('blackjack', () => {
 			expect(offers).toBeGreaterThan(300);
 		}, 30_000);
 
+		/** The full blackjack view, for the tests that read more than the hands. */
+		type BlackjackGameView = Extract<GameView, { game: 'blackjack' }>;
+
+		describe('even money', () => {
+			type EvenView = BlackjackGameView;
+			/** A blackjack against an ace, as init leaves it: the even-money offer open. */
+			function evenMoney(dealer: number[], stack = HUGE_STACK) {
+				const s = stacked([1, 13], dealer, [], stack);
+				s.insuranceOffer = true;
+				return s;
+			}
+
+			it('offers even money on a blackjack against an ace, hiding the hole card', () => {
+				const s = evenMoney([1, 12]);
+				expect(handler.legalActions(s)).toEqual(['INSURE', 'NO_INSURANCE']);
+				const v = viewOf<EvenView>(handler.view(s));
+				expect(v.resolved).toBe(false);
+				expect(v.evenMoneyOffer).toBe(true);
+				expect(v.insuranceOffer).toBeNull();
+				expect(v.canDouble).toBe(false);
+				expect(v.canSplit).toBe(false);
+				expect(v.dealer.hidden).toBe(true);
+				expect(v.dealer.total).toBe(0);
+				// The placeholder face says nothing about the real hole card.
+				expect(v.dealer.cards[1]).toEqual({ rank: 10, suit: 's' });
+			});
+
+			it('pays 1:1 when taken, whatever the hole card', () => {
+				for (const dealer of [[1, 12], [1, 6]]) {
+					const step = handler.apply(evenMoney(dealer), { type: 'INSURE' });
+					expect(step.outcome).toEqual({ stake: BET, returned: BET * 2, detail: 'Blackjack — even money paid 1:1' });
+					const v = viewOf<EvenView>(step.view);
+					expect(v.evenMoney).toBe(true);
+					expect(v.evenMoneyOffer).toBe(false);
+					expect(v.insured).toBe(0);
+					// Answered in play, so the result screen only turns the hole card.
+					expect(v.opening).toBe(false);
+					expect(v.dealer.hidden).toBeUndefined();
+				}
+			});
+
+			it('pushes against a dealer blackjack when declined, and pays 3:2 otherwise', () => {
+				let step = handler.apply(evenMoney([1, 12]), { type: 'NO_INSURANCE' });
+				expect(step.outcome).toMatchObject({ stake: BET, returned: BET, detail: 'Both blackjack — push' });
+				step = handler.apply(evenMoney([1, 6]), { type: 'NO_INSURANCE' });
+				expect(step.outcome).toMatchObject({ stake: BET, returned: BET + Math.floor((BET * 3) / 2) });
+				expect(viewOf<EvenView>(step.view).evenMoney).toBe(false);
+			});
+
+			it('is offered when the stack cannot cover insurance', () => {
+				let offers = 0;
+				for (let i = 0; i < 6_000; i++) {
+					// All in: no chips left for insurance, but even money needs none.
+					const step = handler.init({ game: 'blackjack' }, BET, BET);
+					const s = step.state as any;
+					if (s.dealer[0].rank !== 1 || handTotalOf(s.hands[0].cards) !== 21) continue;
+					offers++;
+					expect(step.outcome).toBeNull();
+					expect(viewOf<EvenView>(step.view).evenMoneyOffer).toBe(true);
+					expect(handler.apply(s, { type: 'INSURE' }).outcome).toMatchObject({ stake: BET, returned: BET * 2 });
+				}
+				expect(offers).toBeGreaterThan(5);
+			}, 30_000);
+
+			it('accepts nothing but an answer while it is open', () => {
+				const s = evenMoney([1, 6]);
+				for (const type of ['HIT', 'STAND', 'DOUBLE', 'SPLIT'] as const) {
+					expect(() => handler.apply(s, { type })).toThrow(GameError);
+				}
+			});
+		});
+
+		describe('double after split', () => {
+			it('lets each split hand double on its first two cards', () => {
+				const s = stacked([8, 8], [10, 7], [3, 2, 10, 9]);
+				let step = handler.apply(s, { type: 'SPLIT' });
+				// Hand 1 is 8+3 = 11: the view and the server both allow the double.
+				expect(viewOf<BlackjackGameView>(step.view).canDouble).toBe(true);
+				expect(handler.legalActions(s)).toContain('DOUBLE');
+				step = handler.apply(s, { type: 'DOUBLE' }); // 8+3+10 = 21
+				let v = viewOf<BlackjackGameView>(step.view);
+				expect(v.active).toBe(1);
+				expect(v.hands[0]).toMatchObject({ bet: BET * 2, doubled: true });
+				// Hand 2 is 8+2 = 10 and may double too.
+				expect(v.canDouble).toBe(true);
+				step = handler.apply(s, { type: 'DOUBLE' }); // 8+2+9 = 19
+				v = viewOf<BlackjackGameView>(step.view);
+				expect(v.hands.map((h) => h.bet)).toEqual([BET * 2, BET * 2]);
+				// 21 and 19 both beat 17.
+				expect(step.outcome).toEqual({
+					stake: BET * 4,
+					returned: BET * 8,
+					detail: 'Hand 1: You win with 21; Hand 2: You win with 19',
+				});
+			});
+
+			it('refuses a double after split the stack cannot cover', () => {
+				// Three bets' worth: the split and one double use it all.
+				const s = stacked([8, 8], [10, 7], [3, 2, 10], BET * 3);
+				handler.apply(s, { type: 'SPLIT' });
+				const step = handler.apply(s, { type: 'DOUBLE' });
+				expect(viewOf<BlackjackGameView>(step.view).canDouble).toBe(false);
+				expect(handler.legalActions(s)).not.toContain('DOUBLE');
+				expect(() => handler.apply(s, { type: 'DOUBLE' })).toThrow(GameError);
+			});
+
+			it('never doubles split aces', () => {
+				// Ace + 5 and ace + 4 would be soft hands worth doubling, but split aces stand.
+				const s = stacked([1, 1], [10, 7], [5, 4]);
+				const step = handler.apply(s, { type: 'SPLIT' });
+				expect(step.outcome).not.toBeNull();
+				expect(viewOf<BlackjackGameView>(step.view).canDouble).toBe(false);
+				expect(handler.legalActions(s)).toEqual([]);
+				expect(step.outcome).toMatchObject({ stake: BET * 2, returned: 0 });
+			});
+		});
+
+		it('sends each hand its own bet, doubled once it is doubled', () => {
+			const s = stacked([8, 8], [10, 7], [3, 10]);
+			let v = viewOf<BlackjackGameView>(handler.view(s));
+			expect(v.hands[0]).toMatchObject({ bet: BET, doubled: false });
+			handler.apply(s, { type: 'SPLIT' });
+			v = viewOf<BlackjackGameView>(handler.apply(s, { type: 'DOUBLE' }).view);
+			expect(v.hands.map((h) => [h.bet, h.doubled])).toEqual([[BET * 2, true], [BET, false]]);
+		});
+
 		it('does not offer insurance the stack cannot cover', () => {
 			for (let i = 0; i < 3_000; i++) {
 				const step = handler.init({ game: 'blackjack' }, BET, BET);
@@ -946,7 +1203,8 @@ describe('blackjack', () => {
 			const step = handler.init({ game: 'blackjack' }, BET, HUGE_STACK);
 			const v = viewOf<BlackjackView>(step.view);
 			const playerNatural = v.player.total === 21 && v.player.cards.length === 2;
-			if (!playerNatural) continue;
+			// Against an ace up the player is asked about even money first.
+			if (!playerNatural || v.dealer.cards[0]!.rank === 1) continue;
 			// No decision is asked for: the hand is over as soon as it is dealt.
 			const outcome = step.outcome!;
 			expect(outcome).not.toBeNull();

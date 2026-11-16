@@ -81,6 +81,22 @@ describe('poker hand evaluation', () => {
 		expect(evaluate2(cards('X As')).label).toBe('Pair of Aces');
 		expect(evaluate2(cards('X 9s')).label).toBe('Ace-9');
 	});
+
+	it('plays the joker in a flush as the highest rank the flush is missing', () => {
+		const score = (text: string) => evaluate5(cards(text), { wheel: 'second' }).score;
+		// It used to count as a second ace: A-A-K-7-2, which beat any real A-K flush.
+		expect(score('X As Ks 7s 2s')).toEqual([CATEGORY.flush, 14, 13, 12, 7, 2]);
+		expect(compareScores(score('X As Ks 7s 2s'), score('Ah Kh Qh 7h 2h'))).toBe(0);
+		expect(compareScores(score('X As Ks 7s 2s'), score('Ah Kh Qh Jh 9h'))).toBeLessThan(0);
+		expect(score('X As Ks Qs 2s')).toEqual([CATEGORY.flush, 14, 13, 12, 11, 2]);
+		// Without an ace in the flush it is still the ace.
+		expect(score('X Ks 9s 7s 2s')).toEqual([CATEGORY.flush, 14, 13, 9, 7, 2]);
+		// Straights, straight flushes and aces outside a flush are unchanged.
+		expect(evaluate5(cards('X Ks Qs Js Ts')).royal).toBe(true);
+		expect(evaluate5(cards('X As Ks Qs Js')).royal).toBe(true);
+		expect(evaluate5(cards('X Ah Kd 7c 2s')).label).toBe('Pair of Aces');
+		expect(evaluate5(cards('X As Ad Kh Kc')).label).toBe('Aces full of Kings');
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -252,6 +268,15 @@ describe("Ultimate Texas Hold'em", () => {
 		expect(pushedAnte.returned).toBe(BET);
 	});
 
+	it('says who won in the result, even when the kickers decided it', () => {
+		const win = play(rigged('As Ad', '2c 7h 9s Jd 3c', 'Ks 4h'), 'BET_4X').outcome!;
+		expect(win.detail).toBe('You win: Pair of Aces beats King high — dealer does not qualify, ante pushes');
+		const kicker = play(rigged('2s 4d', '7c 8h 9s Kd Jc', 'Qs 3h'), 'CHECK', 'CHECK', 'BET_1X').outcome!;
+		expect(kicker.detail).toBe('Dealer wins: King high, better kicker — dealer does not qualify, ante pushes');
+		const tie = play(rigged('2s 3d', 'Ac Kh Qs Jd Tc', '4s 5h'), 'BET_4X').outcome!;
+		expect(tie.detail).toBe('Tie: Straight, Ace high each — bets push');
+	});
+
 	it('pushes everything on a tie', () => {
 		// The board plays for both: a broadway straight.
 		const out = play(rigged('2s 3d', 'Ac Kh Qs Jd Tc', '4s 5h'), 'BET_4X').outcome!;
@@ -345,6 +370,35 @@ describe('Pai Gow Poker', () => {
 		expect(lowOf('X As Ad Ah Ac Kd Qc')).toBe('K Q'); // five aces kept
 	});
 
+
+	it('sets a joker flush the house way as a legal split', () => {
+		// The flush stays high with the best low hand left over; with the joker
+		// as a queen the high hand is still a flush, so the split is legal.
+		for (const text of ['X As Ks 7s 2s 9d 4c', 'X As Ks 7s 2s Ad 4c', 'X Ks 9s 7s 2s Qd Qc']) {
+			const hand = cards(text);
+			const low = houseWay(hand);
+			expect(legalSplits(hand).some((split) => split.low[0] === low[0] && split.low[1] === low[1])).toBe(true);
+		}
+		expect(lowOf('X As Ks 7s 2s 9d 4c')).toBe('4 9');
+		// Over many deals the house way is always one of the legal splits.
+		for (let i = 0; i < 2_000; i++) {
+			const s = handler.init({ game: 'paigow' }, BET, HUGE).state as { player: Card[] };
+			const low = houseWay(s.player);
+			expect(legalSplits(s.player).some((split) => split.low[0] === low[0] && split.low[1] === low[1])).toBe(true);
+		}
+	});
+
+	it('reads the result as both players\' hands and a verdict', () => {
+		const dealer = '3s 5d 8c Th 2s 4h 7c'; // house way: T-high / 8-7
+		const both = handler.apply(rigged('As Ad Kc Kh 9s 4d 2c', dealer), { type: 'SET_HAND', low: [2, 3] }).outcome!;
+		expect(both.detail).toBe(
+			'You: Pair of Aces and Pair of Kings. Dealer: 10 high and 8-7 — you win both hands, paid 1:1 less 5% commission'
+		);
+		const copy = handler.apply(rigged('As Ad 8h 7s 5c 4d 2c', dealer), { type: 'SET_HAND', low: [2, 3] }).outcome!;
+		expect(copy.detail).toBe(
+			'You: Pair of Aces and 8-7. Dealer: 10 high and 8-7 — one hand each, a push (low hand tied; ties go to the dealer)'
+		);
+	});
 
 	it('always leaves at least one legal split', () => {
 		for (let i = 0; i < 300; i++) {

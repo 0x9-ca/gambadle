@@ -239,20 +239,29 @@ function settle(s: PaiGowState, low: [number, number]): Step {
 	const r = results(s);
 	const v = splitView(s.player, s.low);
 	const d = splitView(s.dealer, s.dealerLow);
-	const vs = `${v.highRank} / ${v.lowRank} against ${d.highRank} / ${d.lowRank}`;
+	const vs = `You: ${v.highRank} and ${v.lowRank}. Dealer: ${d.highRank} and ${d.lowRank}`;
+	// A copy reads as a loss with no reason given, so say where one happened.
+	const player = splitOf(s.player, s.low as [number, number]);
+	const dealer = splitOf(s.dealer, s.dealerLow as [number, number]);
+	const copies = [
+		compareScores(player.high.score, dealer.high.score) === 0 ? 'high' : null,
+		compareScores(player.lowHand.score, dealer.lowHand.score) === 0 ? 'low' : null,
+	].filter((h) => h !== null);
+	const copyNote = copies.length > 0 ? ` (${copies.join(' and ')} ${copies.length > 1 ? 'hands' : 'hand'} tied; ties go to the dealer)` : '';
 	let returned: number;
-	let detail: string;
+	let verdict: string;
 	if (r.high === 1 && r.low === 1) {
 		// Even money less commission, rounded down to whole chips.
 		returned = s.bet + Math.floor(s.bet * (1 - PAI_GOW_COMMISSION));
-		detail = `Won both hands, less 5% — ${vs}`;
+		verdict = 'you win both hands, paid 1:1 less 5% commission';
 	} else if (r.high === -1 && r.low === -1) {
 		returned = 0;
-		detail = `Lost both hands — ${vs}`;
+		verdict = `dealer wins both hands${copyNote}`;
 	} else {
 		returned = s.bet;
-		detail = `Push, one hand each — ${vs}`;
+		verdict = `one hand each, a push${copyNote}`;
 	}
+	const detail = `${vs} — ${verdict}`;
 	return { state: s, view: view(s), outcome: { stake: s.bet, returned, detail } };
 }
 

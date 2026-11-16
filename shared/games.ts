@@ -35,8 +35,8 @@ export const DICE_COMBOS = DICE_FACES ** DICE_COUNT;
 
 /**
  * The roll-under target runs 2 to 9. Above that the win chance is so high that
- * the fair price rounds to barely more than the stake, and a whole-chip payout
- * would swallow the whole win on small bets.
+ * the fair price is barely more than the stake, and with wins rounded up to a
+ * whole chip (see worker/games/dice.ts) small bets would pay far over the odds.
  */
 export const DICE_MIN_TARGET = 2;
 export const DICE_MAX_TARGET = 9;

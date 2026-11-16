@@ -25,11 +25,14 @@ export function CrapsBoard({
 	busy,
 	onAction,
 	animate,
+	stake,
 }: {
 	view: CrapsView;
 	busy: boolean;
 	onAction: (action: Action) => void;
 	animate?: boolean;
+	/** The round's recorded bet (the line bet), for views stored before they carried it. */
+	stake?: number;
 }) {
 	// Tumble only while a roll is in flight, not while odds are being taken.
 	const [rollSent, setRollSent] = useState(false);
@@ -48,6 +51,7 @@ export function CrapsBoard({
 	const fieldWon = settling ? null : (view.field?.won ?? null);
 	const faces: [number, number] = tumbling ? [(tick * 5) % 6 + 1, (tick * 3 + 2) % 6 + 1] : (last?.dice ?? [5, 5]);
 	const pass = view.side === 'pass';
+	const lineBet = view.bet ?? stake;
 	const settled = view.resolved && !settling;
 
 	const headline = !last
@@ -102,6 +106,17 @@ export function CrapsBoard({
 					</ol>
 				) : null}
 
+				<p className="craps__odds">
+					{pass ? 'Pass Line' : "Don't Pass"} bet
+					{lineBet !== undefined ? (
+						<>
+							{' '}
+							<strong>{chipCount(lineBet)}</strong>
+						</>
+					) : null}
+					{/* Once settled, the note below says how the line bet ended. */}
+					{settled ? null : ' · pays 1:1'}
+				</p>
 				{view.odds > 0 && view.oddsRatio ? (
 					<p className="craps__odds">
 						Odds bet <strong>{chipCount(view.odds)}</strong> · pays {ratio(view.oddsRatio)} if you win

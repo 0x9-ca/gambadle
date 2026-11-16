@@ -222,6 +222,14 @@ export type GameView = GameViewBase &
 				insuranceOffer: number | null;
 				/** Chips placed on insurance, 0 if none. */
 				insured: number;
+				/**
+				 * A blackjack against an ace up: the player is offered even money
+				 * (answered with INSURE to take it, NO_INSURANCE to decline), and
+				 * `insuranceOffer` is null. Absent on views saved before it existed.
+				 */
+				evenMoneyOffer?: boolean;
+				/** The player took even money. Absent on views saved before it existed. */
+				evenMoney?: boolean;
 				/** True when the round ended on the deal itself, before the player decided anything. */
 				opening: boolean;
 				dealer: HandView;
@@ -243,7 +251,18 @@ export type GameView = GameViewBase &
 				opening: boolean;
 		  }
 		| { game: 'coinflip'; result: 'heads' | 'tails'; won: boolean }
-		| { game: 'dice'; roll: number; dice: number[]; won: boolean }
+		| {
+				game: 'dice';
+				roll: number;
+				dice: number[];
+				won: boolean;
+				/**
+				 * The roll-under target and the chips bet, so the board can show the
+				 * wager. Optional: views stored before they were added lack them.
+				 */
+				target?: number;
+				bet?: number;
+		  }
 		| {
 				game: 'slots';
 				/** The spins in order; empty until the SPIN is played. */
@@ -284,6 +303,8 @@ export type GameView = GameViewBase &
 		| {
 				game: 'craps';
 				side: 'pass' | 'dontpass';
+				/** Chips on the line bet. Optional: views stored before it was added lack it. */
+				bet?: number;
 				/** The point once set on the come-out roll, else null. */
 				point: number | null;
 				/** Every roll so far, in order. */

@@ -92,6 +92,7 @@ function BoardRow({
 	still,
 	flip,
 	gate = false,
+	bet,
 }: {
 	still?: number;
 	flip?: number;
@@ -102,11 +103,20 @@ function BoardRow({
 	active?: boolean;
 	/** On a result board, hold the total back until this hand's cards have landed. */
 	gate?: boolean;
+	/** Chips on this hand, shown under the label (blackjack, where each hand has its own bet). */
+	bet?: number;
 }) {
 	const landed = useRevealed(gate ? handDoneMs(hand.cards.length, still, flip) / 1000 : 0);
 	return (
 		<div className={`board__row${active ? ' board__row--active' : ''}`}>
-			<span className="board__label">{label}</span>
+			<span className="board__label">
+				{label}
+				{bet !== undefined ? (
+					<span className="faint board__bet">
+						{chipCount(bet)}
+					</span>
+				) : null}
+			</span>
 			<Hand cards={hand.cards} hideLast={hand.hidden === true} still={still} flip={flip} />
 			{/* Poker hands have no running total, so they leave the column out. */}
 			{showTotal ? (
@@ -167,6 +177,8 @@ function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>)
 					// A round that ended on the deal was never seen in play, so deal it out.
 					still={animate && !view.opening ? hand.cards.length : undefined}
 					gate={animate}
+					// Already doubled when the hand was doubled down.
+					bet={hand.bet}
 				/>
 			))}
 			<Note>Blackjack pays 3:2. Dealer stands on all 17s.</Note>
@@ -178,7 +190,18 @@ function BlackjackBoard({ view, busy, onAction, animate }: BoardOf<'blackjack'>)
 				</Note>
 			) : null}
 			{!view.resolved && view.insured > 0 ? <Note>Insured for {chipCount(view.insured)}.</Note> : null}
-			{!view.resolved && view.insuranceOffer !== null ? (
+			{!view.resolved && view.evenMoneyOffer ? (
+				<>
+					<Note>
+						Blackjack against a dealer ace. Take even money for a sure 1:1 now, or decline: 3:2 if the dealer
+						has no blackjack, a push if it does.
+					</Note>
+					<Actions>
+						{button('INSURE', 'Take even money', true)}
+						{button('NO_INSURANCE', 'No thanks')}
+					</Actions>
+				</>
+			) : !view.resolved && view.insuranceOffer !== null ? (
 				<>
 					<Note>Dealer shows an ace. Insurance pays 2:1 if the dealer has blackjack.</Note>
 					<Actions>
@@ -384,8 +407,10 @@ function CoinFlipBoard({ view, busy, onAction, animate }: BoardOf<'coinflip'>) {
 /** Class for a landed coin, so heads and tails read differently at a glance. */
 const settledSide = (settled: boolean, side: 'heads' | 'tails'): string => (settled ? ` coin--${side}` : '');
 
-function DiceBoard({ view, busy, onAction, animate }: BoardOf<'dice'>) {
+function DiceBoard({ view, busy, onAction, animate, stake }: BoardOf<'dice'>) {
 	const rolling = useRollOnMount(!!animate && view.resolved, 900);
+	// Views stored before the wager was added carry neither field; fall back to the round's stake.
+	const bet = view.bet ?? stake;
 	const tumbling = busy || rolling;
 	const tick = useTick(tumbling, 80);
 	// Placeholder faces while tumbling; the settled faces are the server's.
@@ -394,6 +419,12 @@ function DiceBoard({ view, busy, onAction, animate }: BoardOf<'dice'>) {
 
 	return (
 		<div className="board">
+			{view.target !== undefined || bet !== undefined ? (
+				<p className="board__label board__hand" style={{ margin: 0 }}>
+					{view.target !== undefined ? `Roll ${view.target} or under` : 'Your bet'}
+					{bet !== undefined ? ` · ${chipCount(bet)}` : ''}
+				</p>
+			) : null}
 			<div className="dice-row">
 				{/* Unrolled dice show a five, the face that reads as "a die" best. */}
 				{(faces.length === 0 ? [5, 5] : faces).map((face, i) => (
@@ -563,14 +594,14 @@ function ThreeCardBoard({ view, busy, onAction, animate }: BoardOf<'threecard'>)
 				showTotal={false}
 				still={animate ? view.hand.cards.length : undefined}
 			/>
-			<p className="board__label" style={{ margin: 0 }}>
+			<p className="board__label board__hand" style={{ margin: 0 }}>
 				{view.rank}
 			</p>
 			{/* Dealt only once the player plays; a fold never shows the dealer. */}
 			{view.dealer ? (
 				<>
 					<BoardRow label="Dealer" hand={view.dealer} showTotal={false} />
-					<p className="board__label" style={{ margin: 0 }}>
+					<p className="board__label board__hand" style={{ margin: 0 }}>
 						{dealerLanded ? view.dealerRank : '—'}
 					</p>
 				</>
@@ -719,7 +750,7 @@ function UltimateBoard({ view, busy, onAction, animate }: BoardOf<'ultimate'>) {
 			/>
 			<CardsRow label="Board" cards={view.board.cards} slots={5} still={animate ? 5 : undefined} />
 			<CardsRow label="You" cards={view.hand.cards} slots={2} still={animate ? 2 : undefined} />
-			<p className="board__label" style={{ margin: 0 }}>
+			<p className="board__label board__hand" style={{ margin: 0 }}>
 				{view.rank}
 				{view.play > 0 ? ` · Play bet ${chipCount(view.play)}` : ''}
 			</p>
@@ -795,7 +826,7 @@ function PaiGowBoard({ view, busy, onAction }: BoardOf<'paigow'>) {
 
 	return (
 		<div className="board">
-			<p className="board__label" style={{ margin: 0 }}>
+			<p className="board__label board__hand" style={{ margin: 0 }}>
 				Tap two cards for your low hand ({low.length}/2)
 			</p>
 			<div className="hand hand--compact pick-hand">

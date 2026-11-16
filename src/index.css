@@ -788,14 +788,22 @@ button:disabled {
 	font-weight: 700;
 }
 /*
- * A board__label line of its own on a board is content, not a label: a poker
- * hand's name, or what to tap. Uppercased, "Pair of Js" read as "PAIR OF JS".
+ * board__hand marks a label line that is content, not a label: a poker hand's
+ * name, or what to tap. Uppercased, "Pair of Js" read as "PAIR OF JS".
  * The short row labels (You, Dealer, High) keep the small caps.
  */
-.board > p.board__label {
+.board__hand {
 	font-size: 0.85rem;
 	letter-spacing: 0.02em;
 	text-transform: none;
+}
+
+/* A row's bet: undo the label's small caps so it reads like other chip counts. */
+.board__bet {
+	display: block;
+	text-transform: none;
+	letter-spacing: 0;
+	font-weight: 400;
 }
 
 .board__total {

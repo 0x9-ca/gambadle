@@ -74,6 +74,7 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - Single wager shape: `{ kind: 'roll_under', target }`.
 - Roll is 2d6 (total 2-12); win rule is `total <= target`, priced from exact combination counts.
 - Target bounds from `shared/games.ts`.
+- A win returns `ceil(bet × multiplier)`, computed in integer hundredths (`diceReturn`). Rounding up is the owner's choice so every win profits at least a chip; it gives the player a small edge on tiny bets (e.g. 1 chip on target 9), while from 25 chips the house keeps an edge on every target.
 
 ### Slots and Mega Slots
 - A round is five spins (`SLOT_SPINS`), all dealt by the one `SPIN` (so the round is still a single roll for the daily seed). The player picks the bet **per spin** on the bet screen; the engine's stake is five times it, so a slot stake is always a multiple of five (`fitStake`/`slotStake`: rounded down, at least 5, which is also why `canPlay` needs 5 chips). Double or Nothing offers a multiple of five too. The return is the sum of the spins divided by five, rounded once; the per-chip RTP is unchanged (`test/slots.test.ts`, `test/megaslots.test.ts`).

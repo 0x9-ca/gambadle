@@ -216,7 +216,7 @@ export function MegaSlotsBoard({
 											: `Press spin: ${SLOT_SPINS} spins at ${formatChips(perSpin)} ${perSpin === 1 ? 'chip' : 'chips'} each`}
 					</span>
 					<span className="mega__win">
-						<span className="board__label">Win</span> {stake !== undefined ? formatChips(winChips) : `${winMultiple.toFixed(2)}×`}
+						<span className="board__label">Paid</span> {stake !== undefined ? formatChips(winChips) : `${winMultiple.toFixed(2)}×`}
 					</span>
 				</div>
 			</div>
