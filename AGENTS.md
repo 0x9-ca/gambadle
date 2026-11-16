@@ -28,7 +28,7 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - `worker/time.ts` — ET day logic and reset countdown
 - `worker/db.ts` — D1 persistence
 - `worker/stats.ts` — personal stats, summarized from `run_results` (one row per finished run, per session)
-- `worker/daily.ts` — `GET /api/daily`: today's ranked runs compared (everyone ranked gets the same games and outcomes); aggregates only, never another player's run
+- `worker/daily.ts` — `GET /api/daily`: today's ranked runs compared round by round (everyone ranked plays the same games, each with their own outcomes); aggregates only, never another player's run
 - `shared/protocol.ts` — shared API/game types and run model
 - `src/components/Practice.tsx` — staging's practice menu / bar (see "Staging")
 - `shared/games.ts` — shared constants/paytables/ranges
@@ -74,6 +74,7 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - Single wager shape: `{ kind: 'roll_under', target }`.
 - Roll is 2d6 (total 2-12); win rule is `total <= target`, priced from exact combination counts.
 - Target bounds from `shared/games.ts`.
+- A win returns `ceil(bet × multiplier)`, computed in integer hundredths (`diceReturn`). Rounding up is the owner's choice so every win profits at least a chip; it gives the player a small edge on tiny bets (e.g. 1 chip on target 9), while from 25 chips the house keeps an edge on every target.
 
 ### Slots and Mega Slots
 - A round is five spins (`SLOT_SPINS`), all dealt by the one `SPIN` (so the round is still a single roll for the daily seed). The player picks the bet **per spin** on the bet screen; the engine's stake is five times it, so a slot stake is always a multiple of five (`fitStake`/`slotStake`: rounded down, at least 5, which is also why `canPlay` needs 5 chips). Double or Nothing offers a multiple of five too. The return is the sum of the spins divided by five, rounded once; the per-chip RTP is unchanged (`test/slots.test.ts`, `test/megaslots.test.ts`).
@@ -95,10 +96,18 @@ Core invariant: **all outcomes and chip movements are server-side only**.
 - 8/5 Jacks or Better. The whole deck is shuffled in `init` and replacements are the next cards in order, so the hold choice never changes what is dealt. `VP_PAYS` are total returns (a pair of jacks returns the bet). `test/videopoker.test.ts` enumerates every hand and hold (about 27 s) and must land on the published 97.30%.
 
 ### Daily seed (ranked runs)
-- A session's first run of the day is ranked and carries `run.seed` (the ET day); every ranked player gets the same games and outcomes. Unranked runs have no seed and use the CSPRNG.
-- The engine's `draw(run, label, fn)` wraps each game call in a generator seeded from `secret|day|label` (secret = `daily-seed|SESSION_SECRET`, passed to `applyAction`, never stored on the run). Labels name the draw (`game:<round>`, `r<round>:d<doubles>:init|apply`), so nothing is carried between requests.
-- Rules: games must draw randomness only through `worker/rng`, and only in `init` or a single-roll `apply` (card games draw from the shoe shuffled in `init`). A new random draw anywhere else, or one that depends on the player's choices, breaks "same for everyone"; `test/engine.test.ts` ("daily seed") guards this.
+- A session's first run of the day is ranked and carries `run.seed` (the ET day) and `run.nonce` (128 random bits drawn at START). Every ranked player that day gets the **same games** but **their own outcomes**, so one player's results reveal nothing about another's (and a share spoils nothing). Unranked runs have no seed or nonce and use the CSPRNG.
+- Two engine helpers wrap each random call in a generator seeded from a key plus a label (secret = `daily-seed|SESSION_SECRET`, passed to `applyAction`, never stored on the run):
+  - `drawShared(run, label, fn)` — `secret|day|label`, for what decides *which game* is played (`game:<round>`). Anything else that picks a game or pool must use it too.
+  - `draw(run, label, fn)` — `secret|day|nonce|label`, for every outcome: deals, spins, rolls, Double or Nothing replays (`r<round>:d<doubles>:init|apply`).
+  - Labels name the draw and the nonce is stored on the run, so nothing is carried between requests and a retried request redraws exactly the same. `publicRun` strips the nonce. A ranked run saved before nonces existed falls back to `secret|day|label` for its outcomes.
+- Rules: games must draw randomness only through `worker/rng`, and only in `init` or a single-roll `apply` (card games draw from the shoe shuffled in `init`). A new random draw anywhere else, or one that depends on the player's choices, makes a run's outcomes depend on how it is played or on retries; `test/engine.test.ts` ("daily seed") guards same games, different outcomes, stable draws and choice-independence.
 - Ranked-ness is decided by the atomic `recordRunStart` count before the run is built.
+
+### Leaderboard order
+- Highest stack first; equal stacks rank by when the run **finished** (`scores.finished_at`, from `run.finishedAt`, which the Worker stamps when a run reaches `finished`), earliest first, then by row id. Ranks are always distinct (no joint ranks).
+- The all-time board applies the same rule: `alltime_best.achieved_at` is the finish time of the run that set the record, and a later run that only equals it does not replace it.
+- Migration `0005_score_finished_at.sql` added the column and backfilled it from the ranked `run_results` row, else `submitted_at`.
 
 ---
 

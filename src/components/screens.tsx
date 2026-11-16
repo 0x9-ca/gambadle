@@ -232,9 +232,23 @@ export function ChoosingScreen({
 					</button>
 				</>
 			) : (
-				<p className="faint" style={{ textAlign: 'center' }}>
-					{busy ? 'Dealing…' : 'Opening the table…'}
-				</p>
+				// Read in render: a failed auto-confirm ends with `busy` going false
+				// while still on this screen, and without a way to retry the run would
+				// be stuck here.
+				autoConfirmed.current && !busy ? (
+					<button
+						type="button"
+						className="btn btn--primary btn--block"
+						style={{ marginTop: '1rem' }}
+						onClick={() => onConfirm(seedWager)}
+					>
+						Deal
+					</button>
+				) : (
+					<p className="faint" style={{ textAlign: 'center' }}>
+						{busy ? 'Dealing…' : 'Opening the table…'}
+					</p>
+				)
 			)}
 		</div>
 	);
@@ -269,8 +283,9 @@ function titleFor(game: GameId): string {
  * browsers do, iOS Safari does not): a double tap for a win, one long buzz for
  * a loss of at least a quarter of the stack. Skipped under reduced motion.
  */
-function useVerdictBuzz(result: RoundResult, chips: number, delay: number): void {
+function useVerdictBuzz(result: RoundResult, chips: number, delay: number, enabled: boolean): void {
 	useEffect(() => {
+		if (!enabled) return;
 		if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
 		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
 		const before = chips - result.net;
@@ -282,25 +297,32 @@ function useVerdictBuzz(result: RoundResult, chips: number, delay: number): void
 	}, []); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-export function ResultPanel({ result, chips }: { result: RoundResult; chips: number }) {
+/**
+ * `animate` is set only for a result that arrived on this page. Any other (one
+ * restored by a page load) was already seen, so it is shown settled: no reveal,
+ * no wait for the verdict, no buzz.
+ */
+export function ResultPanel({ result, chips, animate }: { result: RoundResult; chips: number; animate: boolean }) {
 	const won = result.net > 0;
 	const push = result.net === 0;
 	const tone = push ? 'push' : won ? 'win' : 'loss';
-	const delay = revealSeconds(result);
-	useVerdictBuzz(result, chips, delay);
+	const delay = animate ? revealSeconds(result) : 0;
+	useVerdictBuzz(result, chips, delay, animate);
 	const revealed = useRevealed(delay);
 
 	return (
 		<div className="panel panel--table result">
 			{/* The board goes first so the reveal is watched, not spoiled by the verdict. */}
 			{result.view ? (
-				<div className="board--static">
-					<GameBoard view={result.view} busy={false} onAction={() => {}} animate stake={result.bet} />
+				// Without `animate` the boards still deal their cards in, as a live board does;
+				// `board--settled` stops that and every other motion on a restored result.
+				<div className={`board--static${animate ? '' : ' board--settled'}`}>
+					<GameBoard view={result.view} busy={false} onAction={() => {}} animate={animate} stake={result.bet} />
 				</div>
 			) : null}
 			{revealed ? (
-				<div className={`reveal${result.view ? ' result__verdict' : ''}`}>
-					<p className={`result__headline result__headline--${tone} result__headline--pop`}>
+				<div className={`${animate ? 'reveal' : ''}${result.view ? ' result__verdict' : ''}`}>
+					<p className={`result__headline result__headline--${tone}${animate ? ' result__headline--pop' : ''}`}>
 						{push ? 'PUSH' : won ? 'WIN' : 'LOSS'}
 					</p>
 					<p className={`delta delta--${tone}`} style={{ margin: '0.2rem 0' }}>

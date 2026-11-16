@@ -31,7 +31,8 @@ function fakeDb(rows: Row[]): D1Database {
 		batch: async (statements: { sql: string; args: unknown[] }[]) => {
 			const insert = statements.find((s) => s.sql.includes('INSERT INTO scores'))!;
 			rows.push({ name_key: insert.args[1] as string, day: insert.args[2] as string, run_id: insert.args[6] as string });
-			return [];
+			// Real D1 reports a row count per statement; submitScore reads it.
+			return statements.map(() => ({ meta: { changes: 1 } }));
 		},
 	} as unknown as D1Database;
 }

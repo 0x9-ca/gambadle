@@ -91,6 +91,7 @@ function view(s: CrapsState): GameView {
 		game: 'craps',
 		resolved: s.done,
 		side: s.side,
+		bet: s.bet,
 		point: s.point,
 		rolls: s.shown,
 		odds: s.odds,
@@ -106,14 +107,19 @@ function view(s: CrapsState): GameView {
 const pointName = (n: number) => String(n);
 
 /** Settles the round given how the line bet ended. */
-function settle(s: CrapsState, line: LineResult, why: string): Step {
+function settle(s: CrapsState, line: LineResult, why: string, closed = false): Step {
 	s.done = true;
 	s.result = line;
 	let returned = 0;
 	const notes = [why];
+	const sideName = s.side === 'pass' ? 'Pass' : "Don't Pass";
 
 	if (line === 'win') returned += s.bet * 2;
 	else if (line === 'push') returned += s.bet;
+	// The table-closed refund already says the bets came back.
+	if (!closed) {
+		notes.push(line === 'win' ? `${sideName} wins 1:1` : line === 'push' ? `${sideName} pushes` : `${sideName} loses`);
+	}
 
 	if (s.odds > 0) {
 		const [win, per] = ratioOf(s, s.point!);
@@ -123,6 +129,7 @@ function settle(s: CrapsState, line: LineResult, why: string): Step {
 			notes.push(`odds pay ${win}:${per}`);
 		} else if (line === 'push') {
 			returned += s.odds;
+			if (!closed) notes.push('odds returned');
 		} else {
 			notes.push('odds lost');
 		}
@@ -195,7 +202,7 @@ export const craps: GameHandler = {
 
 		// If the dealt rolls ever ran out, hand every stake back rather than guess.
 		if (s.taken >= CRAPS_MAX_ROLLS) {
-			return settle(s, 'push', 'The table closed — bets returned');
+			return settle(s, 'push', 'The table closed — bets returned', true);
 		}
 		const d1 = s.rolls[2 * s.taken]!;
 		const d2 = s.rolls[2 * s.taken + 1]!;

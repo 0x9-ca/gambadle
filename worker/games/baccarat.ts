@@ -277,28 +277,34 @@ function settle(s: BaccaratState): Step {
 		case 'player':
 			if (result === 'tie') {
 				returned += stake;
-				notes.push('Tie — push');
+				notes.push('Player bet pushes');
 			} else if (result === 'player') {
 				returned += stake * (1 + BACCARAT_ODDS.player);
-				notes.push('Player wins');
+				notes.push(`Player bet pays ${BACCARAT_ODDS.player}:1`);
+			} else {
+				notes.push('Player bet loses');
 			}
 			break;
 		case 'banker':
 			if (result === 'tie') {
 				returned += stake;
-				notes.push('Tie — push');
+				notes.push('Banker bet pushes');
 			} else if (result === 'banker') {
 				// Commission rounds up: rounding down charges nothing on bets under 20
 				// chips, which turns Banker (about 1% house edge) into a player edge.
 				const profit = Math.floor(stake * BACCARAT_ODDS.banker) - Math.ceil(stake * BANKER_COMMISSION);
 				returned += stake + profit;
-				notes.push('Banker wins less 5% commission');
+				notes.push('Banker bet pays 1:1 less 5% commission');
+			} else {
+				notes.push('Banker bet loses');
 			}
 			break;
 		case 'tie':
 			if (result === 'tie') {
 				returned += stake * (1 + BACCARAT_ODDS.tie);
-				notes.push(`Tie pays ${BACCARAT_ODDS.tie}:1`);
+				notes.push(`Tie bet pays ${BACCARAT_ODDS.tie}:1`);
+			} else {
+				notes.push('Tie bet loses');
 			}
 			break;
 	}
@@ -309,16 +315,24 @@ function settle(s: BaccaratState): Step {
 		const p = s.wager.pair;
 		const hit =
 			p === 'player' ? s.playerPair : p === 'banker' ? s.bankerPair : s.playerPair || s.bankerPair;
+		const name = p === 'either' ? 'Either Pair' : p === 'player' ? 'Player Pair' : 'Banker Pair';
 		if (hit) {
 			const odds =
 				p === 'either' ? BACCARAT_ODDS.eitherPair : p === 'player' ? BACCARAT_ODDS.playerPair : BACCARAT_ODDS.bankerPair;
 			returned += pairBet * (1 + odds);
-			notes.push(`${p === 'either' ? 'Either pair' : `${p} pair`} pays ${odds}:1`);
+			notes.push(`${name} pays ${odds}:1`);
+		} else {
+			notes.push(`${name} loses`);
 		}
 	}
 
+	// "Banker wins 7 to 5", not "Banker 7 — Banker wins": the totals once, then each bet.
 	const outcomeLabel =
-		result === 'tie' ? `Tie ${playerTotal}` : `${result === 'player' ? 'Player' : 'Banker'} ${Math.max(playerTotal, bankerTotal)}`;
+		result === 'tie'
+			? `Tie at ${playerTotal}`
+			: result === 'player'
+				? `Player wins ${playerTotal} to ${bankerTotal}`
+				: `Banker wins ${bankerTotal} to ${playerTotal}`;
 
 	return {
 		state: s,

@@ -1,9 +1,9 @@
 /**
  * "How you did today": a finished ranked run set against everyone else's.
  *
- * Every ranked run is dealt the same games with the same outcomes, so a round
- * compares directly: how many players won it, what the field made per chip it
- * bet, and what you made. Only shown for a ranked run; the numbers come from
+ * Every ranked run plays the same games, but each player gets their own deals,
+ * spins and rolls, so a round compares how players fared on the same game: how
+ * many won it, what the field made per chip it bet, and what you made. Only shown for a ranked run; the numbers come from
  * the server and are aggregates, never another player's run.
  */
 
@@ -50,7 +50,7 @@ export function Daily() {
 			</p>
 			<table className="daily__table">
 				<caption className="faint">
-					Everyone who finished a ranked run today got the same games and the same outcomes. Returns are net chips per chip bet.
+					Everyone who finished a ranked run today played the same games, each with their own cards, spins and rolls. Returns are net chips per chip bet.
 				</caption>
 				<thead>
 					<tr>

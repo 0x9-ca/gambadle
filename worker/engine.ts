@@ -35,7 +35,7 @@ import {
 	initialRunState,
 } from '../shared/protocol';
 import { gameById } from './games';
-import { GameError } from './games/types';
+import { GameError, type GameHandler } from './games/types';
 import { pick, withRng } from './rng';
 import { seededRng } from './seed';
 
@@ -52,8 +52,12 @@ export function totalWagered(run: RunState): number {
  * Worker; the client draws everything from `view`.
  */
 export function publicRun(run: RunState | null): RunState | null {
-	if (!run?.current || run.current.state === null) return run;
-	return { ...run, current: { ...run.current, state: null } };
+	if (!run) return run;
+	// The nonce is harmless without the server secret, but it is an input to
+	// the draws, not something the client needs, so it stays here too.
+	const { nonce: _nonce, ...rest } = run;
+	if (!rest.current || rest.current.state === null) return rest;
+	return { ...rest, current: { ...rest.current, state: null } };
 }
 
 /**
@@ -65,13 +69,39 @@ let seedSecret = '';
 
 /**
  * Runs one unit of game randomness. A seeded (daily ranked) run derives a fresh
- * generator from the day plus a label naming exactly which draw this is, rather
+ * generator from a key plus a label naming exactly which draw this is, rather
  * than carrying a stream across requests: runs are persisted and restored, so a
  * stream position would have to be stored, while a label is already implied by
  * the run's own state. Unseeded runs fall straight through to the CSPRNG.
+ *
+ * Two kinds of draw:
+ * - `drawShared` decides which game is played. It is keyed by the day alone, so
+ *   every ranked player that day gets the same lineup.
+ * - `draw` decides what happens in it (deals, spins, rolls, doubles). It also
+ *   mixes in the run's own `nonce`, so outcomes differ per player and one
+ *   player's results reveal nothing about another's, while the stored nonce
+ *   keeps a retried request from drawing anything new.
  */
-function draw<T>(run: RunState, label: string, fn: () => T): T {
+function drawShared<T>(run: RunState, label: string, fn: () => T): T {
 	return run.seed ? withRng(seededRng(`${seedSecret}|${run.seed}|${label}`), fn) : fn();
+}
+
+function draw<T>(run: RunState, label: string, fn: () => T): T {
+	if (!run.seed) return fn();
+	// A ranked run saved before nonces existed keeps its day-only draws, so a run
+	// in progress across the deploy is not rerolled mid-round.
+	const key = run.nonce ? `${seedSecret}|${run.seed}|${run.nonce}|${label}` : `${seedSecret}|${run.seed}|${label}`;
+	return withRng(seededRng(key), fn);
+}
+
+/**
+ * 128 random bits as hex, straight from the platform CSPRNG rather than
+ * `worker/rng`: it is drawn once per run, outside any game, and must not come
+ * from a seeded generator (or every ranked run would share it).
+ */
+function newNonce(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -219,8 +249,10 @@ function queueNextGame(run: RunState): void {
 function nextGame(run: RunState): GameId {
 	// A practice run plays its one game over and over.
 	if (run.testGame) return run.testGame;
-	// Keyed by round alone: the pool is fixed by the (seeded) games already played.
-	return draw(run, `game:${run.round}`, () => chooseGame(run.played, run.chips));
+	// Keyed by round alone, and shared by every ranked run of the day: the pool
+	// is fixed by the games already played. (A stack too small for some game
+	// narrows the pool, which can still send one player down a different lineup.)
+	return drawShared(run, `game:${run.round}`, () => chooseGame(run.played, run.chips));
 }
 
 /**
@@ -307,9 +339,12 @@ function applyActionUnsalted(run: RunState | null, action: Action, seed: string 
 
 	if (action.type === 'START') {
 		// Starting over mid-run is allowed and silently discards the old one.
-		// `seed` is only passed for a ranked run; see RunState.seed.
+		// `seed` is only passed for a ranked run; see RunState.seed and nonce.
+		// A retried START is a new run anyway, so a fresh nonce rerolls nothing
+		// that was already shown.
 		const fresh = initialRunState();
 		fresh.seed = seed;
+		if (seed) fresh.nonce = newNonce();
 		queueNextGame(fresh);
 		return fresh;
 	}
@@ -382,14 +417,15 @@ function commitWager(run: RunState, wager: Wager): RunState {
 	if (run.phase !== 'choosing' || !run.current) {
 		throw new GameError('illegal_action', 'no round awaiting a wager');
 	}
-	if (wager.game !== run.current.game) {
+	// The wager is straight from the request body, so it may not even be an object.
+	if (typeof wager !== 'object' || wager === null || wager.game !== run.current.game) {
 		throw new GameError('invalid_wager', 'wager does not match the round game');
 	}
 
 	const handler = gameById(run.current.game);
 	// For roulette the bet taken at BEGIN_ROUND is only the table limit; the
 	// stake is whatever the player actually spread across the spots.
-	const normalized = handler.parseWager(wager, run.current.bet, run.chips);
+	const normalized = parseWager(handler, wager, run.current.bet, run.chips);
 	run.current.bet = handler.stakeOf?.(normalized) ?? run.current.bet;
 	const bet = run.current.bet;
 	const step = draw(run, `r${run.round}:d0:init`, () => handler.init(normalized, bet, run.chips));
@@ -402,6 +438,19 @@ function commitWager(run: RunState, wager: Wager): RunState {
 	// A game can resolve without any player action.
 	if (step.outcome) settleRound(run, step.outcome);
 	return run;
+}
+
+/**
+ * A game's `parseWager`, with any crash on a malformed shape (a missing `bet`
+ * object, say) reported as a bad wager rather than escaping as a 500.
+ */
+function parseWager(handler: GameHandler, wager: Wager, bet: number, stack: number): Wager {
+	try {
+		return handler.parseWager(wager, bet, stack);
+	} catch (error) {
+		if (error instanceof GameError) throw error;
+		throw new GameError('invalid_wager', 'malformed wager');
+	}
 }
 
 /** Routes an action belonging to the game currently in play. */
@@ -536,7 +585,7 @@ function acceptDouble(run: RunState): RunState {
 
 	// The stack is what bounds the wager, so it is passed as the available
 	// stack to both validation and init.
-	const normalized = handler.parseWager(rebaseWager(wager, stake, run.chips), stake, run.chips);
+	const normalized = parseWager(handler, rebaseWager(wager, stake, run.chips), stake, run.chips);
 	const step = draw(run, `r${run.round}:d${doubles + 1}:init`, () =>
 		handler.init(normalized, stake, run.chips)
 	);

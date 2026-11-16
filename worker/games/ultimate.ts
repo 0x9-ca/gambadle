@@ -146,9 +146,9 @@ function settle(s: UltimateState): Step {
 		const name = paytableHand(player);
 		if (name) {
 			returned += s.trips * (1 + UTH_TRIPS[name]);
-			notes.push(`Trips ${name} pays ${UTH_TRIPS[name]}:1`);
+			notes.push(`Trips bet pays ${UTH_TRIPS[name]}:1 for ${name}`);
 		} else {
-			notes.push('Trips lost');
+			notes.push('Trips bet loses');
 		}
 	}
 
@@ -173,17 +173,17 @@ function settle(s: UltimateState): Step {
 		const blindPays = name ? UTH_BLIND[name] : undefined;
 		// Flush pays 3:2 on the Blind, so whole chips round the fraction down.
 		returned += blindPays !== undefined ? blind + Math.floor(blind * blindPays) : blind;
-		headline = versus(player.label, dealer.label);
+		headline = `You win: ${versus(player.label, dealer.label)}`;
 		if (!qualifies) headline += ' — dealer does not qualify, ante pushes';
 		if (blindPays !== undefined) headline += ` — Blind pays ${blindPays === 1.5 ? '3:2' : `${blindPays}:1`}`;
 	} else if (cmp === 0) {
 		returned += ante + blind + s.play;
-		headline = `Tie at ${player.label} — bets pushed`;
+		headline = `Tie: ${player.label} each — bets push`;
 	} else {
 		// A dealer who fails to qualify still pushes the ante, even on a loss.
 		if (!qualifies) returned += ante;
-		headline = `Dealer: ${versus(dealer.label, player.label)}`;
-		if (!qualifies) headline += ' — ante pushes';
+		headline = `Dealer wins: ${versus(dealer.label, player.label)}`;
+		if (!qualifies) headline += ' — dealer does not qualify, ante pushes';
 	}
 	notes.unshift(headline);
 	return { state: s, view: view(s), outcome: { stake, returned, detail: notes.join(' — ') } };

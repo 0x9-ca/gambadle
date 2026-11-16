@@ -101,6 +101,7 @@ const PRIORITY = [
 	'Confirm',
 	'Spin with',
 	'No insurance',
+	'No thanks', // declines even money
 	'Stand',
 	'Check',
 	'Bet 1x',

@@ -38,6 +38,8 @@ interface RouletteState {
 }
 
 function validate(bet: RouletteBet): RouletteBet {
+	// Client input: a chip without a bet must be a 4xx, not a TypeError (500).
+	if (!bet || typeof bet !== 'object') throw new GameError('invalid_wager', 'bad roulette spot');
 	switch (bet.kind) {
 		case 'straight': {
 			const { number } = bet;
@@ -107,16 +109,21 @@ function profitMultiplier(wager: RouletteBet, n: number): number {
 	}
 }
 
+/** Where a chip sits, worded to follow "N chips": "on red", "straight up on 17". */
 function describe(wager: RouletteBet): string {
 	switch (wager.kind) {
 		case 'straight':
 			return `straight up on ${wager.number}`;
 		case 'dozen':
-			return `${wager.dozen === 1 ? '1st' : wager.dozen === 2 ? '2nd' : '3rd'} dozen`;
+			return `on the ${wager.dozen === 1 ? '1st' : wager.dozen === 2 ? '2nd' : '3rd'} dozen`;
 		case 'column':
-			return `column ${wager.column}`;
+			return `on column ${wager.column}`;
+		case 'low':
+			return 'on low (1-18)';
+		case 'high':
+			return 'on high (19-36)';
 		default:
-			return wager.kind;
+			return `on ${wager.kind}`;
 	}
 }
 
@@ -150,8 +157,9 @@ function settle(chips: readonly RouletteChip[], n: number): { returned: number; 
 	return { returned, won, lost };
 }
 
+// Amounts carry their unit: "red (10)" read as if 10 were a number on the wheel.
 const spots = (chips: readonly RouletteChip[]): string =>
-	chips.map((c) => `${describe(c.bet)} (${c.amount})`).join(', ');
+	chips.map((c) => `${c.amount} ${c.amount === 1 ? 'chip' : 'chips'} ${describe(c.bet)}`).join(', ');
 
 /** Validates every spot and merges chips placed on the same spot. */
 function normalize(chips: unknown): RouletteChip[] {
@@ -221,10 +229,10 @@ export const roulette: GameHandler = {
 
 		s.number = randomInt(MAX_NUMBER + 1);
 		const { returned, won, lost } = settle(s.chips, s.number);
-		const head = `${s.number} ${colorOf(s.number)}`;
+		const head = s.number === 0 ? '0 (green)' : `${s.number} ${colorOf(s.number)}`;
 		const parts: string[] = [];
-		if (won.length > 0) parts.push(`${spots(won)} won`);
-		if (lost.length > 0) parts.push(`${spots(lost)} lost`);
+		if (won.length > 0) parts.push(`won: ${spots(won)}`);
+		if (lost.length > 0) parts.push(`lost: ${spots(lost)}`);
 
 		return {
 			state: s,

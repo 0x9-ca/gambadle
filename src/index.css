@@ -197,6 +197,20 @@ button:disabled {
 	box-shadow: 0 0 0 3px rgb(227 178 60 / 0.18);
 }
 
+/* The smallest phones (320px): brand, pips, day and a four-digit stack overflowed sideways. */
+@media (max-width: 22rem) {
+	.topbar__inner {
+		gap: 0.45rem;
+		padding-inline: 0.75rem;
+	}
+	.brand {
+		letter-spacing: 0.06em;
+	}
+	.chips__label {
+		display: none;
+	}
+}
+
 .countdown {
 	font-family: var(--mono);
 	font-size: 0.72rem;
@@ -773,6 +787,24 @@ button:disabled {
 	color: var(--ink-faint);
 	font-weight: 700;
 }
+/*
+ * board__hand marks a label line that is content, not a label: a poker hand's
+ * name, or what to tap. Uppercased, "Pair of Js" read as "PAIR OF JS".
+ * The short row labels (You, Dealer, High) keep the small caps.
+ */
+.board__hand {
+	font-size: 0.85rem;
+	letter-spacing: 0.02em;
+	text-transform: none;
+}
+
+/* A row's bet: undo the label's small caps so it reads like other chip counts. */
+.board__bet {
+	display: block;
+	text-transform: none;
+	letter-spacing: 0;
+	font-weight: 400;
+}
 
 .board__total {
 	white-space: nowrap;
@@ -1086,6 +1118,14 @@ button:disabled {
 	color: var(--loss);
 }
 
+/* "chips" after a big stack number, so it is not read as a score or a multiplier. */
+.delta__unit {
+	font-family: var(--font);
+	font-size: 0.45em;
+	font-weight: 600;
+	color: var(--ink-dim);
+}
+
 /* Double or nothing */
 
 .don {
@@ -1106,10 +1146,9 @@ button:disabled {
 }
 
 .don__chain {
-	font-size: 0.75rem;
+	font-size: 0.8rem;
 	color: var(--ink-faint);
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	/* A sentence ("You won · doubled 2× so far"), so it is left as written. */
 	font-weight: 700;
 }
 
@@ -1260,6 +1299,20 @@ button:disabled {
 .daily__table td:nth-child(2) {
 	font-family: var(--mono);
 	font-weight: 700;
+}
+
+/* On the smallest phones (320px) the "of N" columns pushed past the edge. */
+@media (max-width: 22rem) {
+	.daily__table {
+		font-size: 0.75rem;
+	}
+	.daily__table th,
+	.daily__table td {
+		padding-inline: 0.1rem;
+	}
+	.daily__table th:first-child {
+		white-space: normal;
+	}
 }
 
 /* Personal stats, folded away under their summary line. */
@@ -2250,6 +2303,18 @@ button:disabled {
 		opacity: 1;
 		visibility: visible;
 	}
+}
+
+/*
+ * A result restored by a page load has been seen already: it is shown at rest,
+ * without the deal, spin or tumble it played the first time. Every motion here
+ * ends where the element's own style already is, so stopping it shows the end.
+ */
+.board--settled *,
+.board--settled *::before,
+.board--settled *::after {
+	animation: none !important;
+	transition: none !important;
 }
 
 /* The verdict waits for the board's reveal, set per game by the delay inline. */

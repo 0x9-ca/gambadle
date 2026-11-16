@@ -306,3 +306,22 @@ describe('the rolls', () => {
 		expect(step.outcome!.returned).toBe(step.outcome!.stake);
 	});
 });
+
+describe('the view and result text', () => {
+	it('carries the line bet, so the board can show it', () => {
+		const s = rigged([6], { side: 'dontpass' });
+		expect(craps.view(s)).toMatchObject({ side: 'dontpass', bet: BET });
+	});
+
+	it('says how the line, the odds and the Field each ended', () => {
+		expect(play([7]).outcome!.detail).toBe('7 on the come-out — Pass wins 1:1');
+		expect(play([12], { side: 'dontpass' }).outcome!.detail).toBe("12 on the come-out — Don't Pass pushes");
+		expect(play([6, 6], { side: 'pass' }, 1).outcome!.detail).toBe('Point 6 made — Pass wins 1:1 — odds pay 6:5');
+		expect(play([4, 7], { side: 'pass', field: 10 }, 2).outcome!.detail).toBe(
+			'Seven out after point 4 — Pass loses — odds lost — Field pays 1:1'
+		);
+		expect(play([4, 7], { side: 'dontpass', field: 10 }).outcome!.detail).toBe(
+			"Seven out after point 4 — Don't Pass wins 1:1 — Field pays 1:1"
+		);
+	});
+});

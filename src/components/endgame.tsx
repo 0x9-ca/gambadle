@@ -3,8 +3,9 @@
  */
 
 import { useState } from 'react';
-import { STARTING_CHIPS, TOTAL_ROUNDS, type RunState } from '../../shared/protocol';
-import { formatChips, formatDelta, roundsOf, SHORT_TITLE, shareText } from '../lib/format';
+import { CRAPS_MAX_ODDS, UTH_MAX_ANTES } from '../../shared/games';
+import { STARTING_CHIPS, TOTAL_ROUNDS, type RunState, type Wager } from '../../shared/protocol';
+import { doubledLabel, formatChips, formatDelta, roundsOf, SHORT_TITLE, shareText } from '../lib/format';
 import { loadName } from '../lib/savedName';
 import { Daily } from './Daily';
 import { Leaderboard } from './Leaderboard';
@@ -29,17 +30,20 @@ export function DoubleOrNothing({
 
 	return (
 		<div className="panel panel--table don">
-			{doubles > 0 ? <p className="don__chain">Double ×{doubles}</p> : <p className="don__chain">You won</p>}
+			<p className="don__chain">{doubles > 0 ? `You won · doubled ${doubles}× so far` : 'You won'}</p>
 
 			<h2 className="panel__title" style={{ marginTop: '0.35rem' }}>
 				Double or nothing?
 			</h2>
 			<p className="panel__sub">
-				Replay {last ? titleFor(last.game) : 'the round'} with {formatChips(run.current?.bet ?? 0)} on the line —
-				your bet plus what you just won. Lose it and the rest of your stack is untouched.
+				Replay {last ? titleFor(last.game) : 'the round'} with {formatChips(run.current?.bet ?? 0)} chips on the line —
+				your bet plus what you just won. {run.current ? doubleRisk(run.current.wager, run.current.bet) : null}
 			</p>
 
-			<p className="don__stack">{formatChips(run.chips)}</p>
+			<p className="don__stack">
+				{formatChips(run.chips)}
+				<span className="delta__unit"> chips</span>
+			</p>
 
 			<div className="btn-row" style={{ marginTop: '1rem' }}>
 				<button type="button" className="btn btn--win" disabled={busy} onClick={onAccept}>
@@ -55,6 +59,44 @@ export function DoubleOrNothing({
 			</p>
 		</div>
 	);
+}
+
+/**
+ * What a replay can cost beyond the amount on offer. The replay keeps the
+ * round's wager shape (engine `rebaseWager`), so games whose play adds bets
+ * (a Play bet, a Blind and raise, odds, doubles and splits) or that carry a
+ * side bet can lose more than the offer; only the rest stays out of it.
+ * Side bets are not quantified here: the engine trims them to the stack.
+ */
+function doubleRisk(wager: Wager, bet: number): string {
+	const safe = 'Lose it and the rest of your stack is untouched.';
+	const rides = (name: string) => `Your ${name} bet rides again too, if your stack still covers it.`;
+	switch (wager.game) {
+		case 'threecard':
+			return [
+				`That is the ante: playing the hand adds a matching ${formatChips(bet)} Play bet, so up to ${formatChips(bet * 2)} chips can go.`,
+				wager.bet.pairPlus ? rides('Pair Plus') : '',
+			].join(' ').trim();
+		case 'ultimate':
+			return [
+				`That is the ante, with a matching Blind beside it, and a raise can add up to ${formatChips(bet * 4)} more, so up to ${formatChips(bet * UTH_MAX_ANTES)} chips can go.`,
+				wager.bet.trips ? rides('Trips') : '',
+			].join(' ').trim();
+		case 'craps':
+			return [
+				`Taking odds on a point can add up to ${formatChips(bet * CRAPS_MAX_ODDS)} more, so up to ${formatChips(bet * (1 + CRAPS_MAX_ODDS))} chips can go.`,
+				wager.bet.field ? rides('Field') : '',
+			].join(' ').trim();
+		case 'blackjack':
+			return [
+				'Doubling down, splitting or insuring puts more of your stack at risk; otherwise, lose it and the rest is untouched.',
+				wager.trilux ? rides('TriLux') : '',
+			].join(' ').trim();
+		case 'baccarat':
+			return wager.bet.pair !== undefined ? `${rides('pair')} Beyond that, the rest of your stack is untouched.` : safe;
+		default:
+			return safe;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +149,7 @@ export function NameEntry({
 						autoComplete="off"
 						autoCapitalize="off"
 						autoCorrect="off"
-						maxLength={32}
+						maxLength={16}
 						disabled={busy}
 					/>
 					{error ? (
@@ -166,14 +208,18 @@ function ShareButton({ run }: { run: RunState }) {
 		const text = shareText(run, window.location.origin);
 		try {
 			if (navigator.share) {
-				await navigator.share({ text });
-				return;
+				try {
+					await navigator.share({ text });
+					return;
+				} catch (error) {
+					// Dismissing the share sheet is not a failure worth reporting.
+					if (error instanceof DOMException && error.name === 'AbortError') return;
+					// Otherwise (desktop browsers refuse some shares) fall back to copying.
+				}
 			}
 			await navigator.clipboard.writeText(text);
 			setLabel('Copied!');
-		} catch (error) {
-			// Dismissing the share sheet is not a failure worth reporting.
-			if (error instanceof DOMException && error.name === 'AbortError') return;
+		} catch {
 			setLabel('Could not copy');
 		}
 		setTimeout(() => setLabel('Share results'), 2000);
@@ -193,11 +239,13 @@ export function Summary({ run }: { run: RunState }) {
 
 	return (
 		<div className="panel panel--table result">
-			<p className={`result__headline result__headline--${bust ? 'loss' : 'win'}`}>
+			{/* Surviving while down on the start is not painted as a win. */}
+			<p className={`result__headline result__headline--${bust ? 'loss' : net >= 0 ? 'win' : 'push'}`}>
 				{bust ? 'Busted' : `Survived ${TOTAL_ROUNDS} rounds`}
 			</p>
 			<p className={`delta delta--${net >= 0 ? 'win' : 'loss'}`} style={{ margin: '0.2rem 0' }}>
 				{formatChips(run.chips)}
+				<span className="delta__unit"> chips</span>
 			</p>
 			<p className="result__detail">
 				{formatDelta(net)} against a {formatChips(STARTING_CHIPS)} start, across {rounds} round
@@ -210,7 +258,7 @@ export function Summary({ run }: { run: RunState }) {
 						<span className={`share-card__square share-card__square--${r.net > 0 ? 'win' : r.net < 0 ? 'loss' : 'push'}`} />
 						<span className="share-card__game">
 							{SHORT_TITLE[r.game]}
-							{r.doubles > 0 ? <span className="log__doubled">×{r.doubles + 1}</span> : null}
+							{r.doubles > 0 ? <span className="log__doubled">{doubledLabel(r.doubles)}</span> : null}
 						</span>
 						<span className={`share-card__net delta--${r.net > 0 ? 'win' : r.net < 0 ? 'loss' : 'push'}`}>
 							{formatDelta(r.net)}

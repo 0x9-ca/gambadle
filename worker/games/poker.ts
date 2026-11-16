@@ -150,7 +150,9 @@ const ALL_CARDS: readonly Card[] = SUITS.flatMap((suit) =>
 
 /**
  * Evaluates five cards. A joker (Pai Gow only) counts as an ace, or as any card
- * that completes a straight, flush or straight flush.
+ * that completes a straight, flush or straight flush. In a flush it plays as the
+ * highest rank the flush is missing, so A-K-7-2 suited plus the joker is A-K-Q-7-2,
+ * never a second ace.
  */
 export function evaluate5(cards: readonly Card[], opts: EvalOptions = { wheel: 'low' }): PokerHand {
 	if (cards.length !== 5) throw new Error(`evaluate5 needs five cards, got ${cards.length}`);
@@ -165,9 +167,12 @@ export function evaluate5(cards: readonly Card[], opts: EvalOptions = { wheel: '
 		const completes =
 			hand.category === CATEGORY.straight || hand.category === CATEGORY.flush || hand.category === CATEGORY.straightFlush;
 		if (!asAce && !completes) continue;
+		// A flush may not use a rank it already holds: A♠ plus a joker "A♠" would
+		// score A-A-K-7-2 and beat a real A-K-Q flush. A straight cannot repeat a
+		// rank anyway, and an ace outside a flush (pairing a held ace) is allowed.
+		if (hand.category === CATEGORY.flush && others.some((c) => c.rank === stand.rank)) continue;
 		// The stand-in carries a suit, so an ace that also completes a flush is
-		// found here too. One that duplicates a held card is fine: it only counts
-		// as an ace or inside a straight or flush, which is what the joker may do.
+		// found here too.
 		if (best === null || compareScores(hand.score, best.score) > 0) best = hand;
 	}
 	return best!;

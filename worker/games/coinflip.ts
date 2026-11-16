@@ -32,7 +32,8 @@ export const coinflip: GameHandler = {
 		if (wager.game !== 'coinflip') {
 			throw new GameError('invalid_wager', 'not a coin flip wager');
 		}
-		const { side } = wager.bet;
+		// `bet` is client input; a missing one must be a 4xx, not a TypeError (500).
+		const side = wager.bet?.side;
 		if (side !== 'heads' && side !== 'tails') {
 			throw new GameError('invalid_wager', 'side must be heads or tails');
 		}

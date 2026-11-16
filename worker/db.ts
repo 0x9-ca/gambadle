@@ -21,20 +21,38 @@ export interface RunRow {
 	phase: string;
 	state: string;
 	name: string | null;
+	/** Bumped on every write; `putRun` takes it back as a compare-and-swap version. */
+	updated_at: number;
 }
 
 export async function getRun(db: D1Database, id: string): Promise<RunRow | null> {
 	return db
-		.prepare('SELECT id, day, phase, state, name FROM runs WHERE id = ?1')
+		.prepare('SELECT id, day, phase, state, name, updated_at FROM runs WHERE id = ?1')
 		.bind(id)
 		.first<RunRow>();
 }
 
+/**
+ * Writes a session's run. Returns false, writing nothing, when `expected` is
+ * given and the row has moved on since it was read: `expected` is the
+ * `updated_at` the caller loaded, or null for "no row yet".
+ *
+ * Without the check, two requests racing on one run (a double-click, or a
+ * DON_ACCEPT and DON_DECLINE sent together) both act on the same state and the
+ * last write silently wins, after the other response already showed its result.
+ *
+ * `updated_at` only ever moves forward, even within one millisecond, so a
+ * version is never reused. The name belongs to the day it was submitted on: it
+ * is not carried into a run on a later day, or the leaderboard would mark
+ * someone else's same-named entry as yours.
+ */
 export async function putRun(
 	db: D1Database,
-	row: { id: string; day: string; phase: string; state: RunState; name?: string | null }
-): Promise<void> {
-	await db
+	row: { id: string; day: string; phase: string; state: RunState; name?: string | null },
+	expected?: number | null
+): Promise<boolean> {
+	const guarded = expected !== undefined;
+	const result = await db
 		.prepare(
 			`INSERT INTO runs (id, day, phase, state, name, created_at, updated_at)
 			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
@@ -42,15 +60,31 @@ export async function putRun(
 			   day = excluded.day,
 			   phase = excluded.phase,
 			   state = excluded.state,
-			   name = COALESCE(excluded.name, runs.name),
-			   updated_at = excluded.updated_at`
+			   name = CASE WHEN runs.day = excluded.day THEN COALESCE(excluded.name, runs.name) ELSE excluded.name END,
+			   updated_at = MAX(excluded.updated_at, runs.updated_at + 1)${guarded ? '\n\t\t\t WHERE runs.updated_at = ?7' : ''}`
 		)
-		.bind(row.id, row.day, row.phase, JSON.stringify(row.state), row.name ?? null, Date.now())
+		.bind(
+			row.id,
+			row.day,
+			row.phase,
+			JSON.stringify(row.state),
+			row.name ?? null,
+			Date.now(),
+			// No row can carry -1, so "expected no row" fails against any row.
+			...(guarded ? [expected ?? -1] : [])
+		)
 		.run();
+	return !guarded || (result.meta.changes ?? 0) > 0;
 }
 
-export async function deleteRun(db: D1Database, id: string): Promise<void> {
-	await db.prepare('DELETE FROM runs WHERE id = ?1').bind(id).run();
+/**
+ * Deletes a session's run; with `day`, only if it is still that day's, so
+ * voiding yesterday's run cannot take today's fresh one with it when the two
+ * writes land out of order.
+ */
+export async function deleteRun(db: D1Database, id: string, day?: string): Promise<void> {
+	if (day === undefined) await db.prepare('DELETE FROM runs WHERE id = ?1').bind(id).run();
+	else await db.prepare('DELETE FROM runs WHERE id = ?1 AND day = ?2').bind(id, day).run();
 }
 
 /**
@@ -81,14 +115,31 @@ const STATS_LIMIT = 1000;
 
 export async function recordRunResult(
 	db: D1Database,
-	row: { sessionId: string; day: string; ranked: boolean; chips: number; bust: boolean; rounds: unknown }
+	row: {
+		sessionId: string;
+		day: string;
+		ranked: boolean;
+		chips: number;
+		bust: boolean;
+		rounds: unknown;
+		/** Defaults to now; the action route passes the run's own `finishedAt` so the two agree. */
+		finishedAt?: number;
+	}
 ): Promise<void> {
 	await db
 		.prepare(
 			`INSERT INTO run_results (session_id, day, ranked, chips, bust, rounds, finished_at)
 			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
 		)
-		.bind(row.sessionId, row.day, row.ranked ? 1 : 0, row.chips, row.bust ? 1 : 0, JSON.stringify(row.rounds), Date.now())
+		.bind(
+			row.sessionId,
+			row.day,
+			row.ranked ? 1 : 0,
+			row.chips,
+			row.bust ? 1 : 0,
+			JSON.stringify(row.rounds),
+			row.finishedAt ?? Date.now()
+		)
 		.run();
 }
 
@@ -152,6 +203,8 @@ export interface ScoreInput {
 	chips: number;
 	roundsPlayed: number;
 	bust: boolean;
+	/** When the run finished, for the tiebreak; null if the run predates the stamp. */
+	finishedAt?: number | null;
 }
 
 export type SubmitResult =
@@ -160,6 +213,9 @@ export type SubmitResult =
 
 /**
  * Records a finished run on both leaderboards, atomically.
+ *
+ * The all-time row takes its `achieved_at` from the score row just written,
+ * which is the run's finish time, so both boards break ties the same way.
  *
  * The scores insert and the alltime_best upsert share a transaction, so the
  * materialized all-time board can never drift from the log it summarizes.
@@ -190,15 +246,31 @@ export async function submitScore(db: D1Database, input: ScoreInput): Promise<Su
 
 	const now = Date.now();
 	const bust = input.bust ? 1 : 0;
+	// Equal stacks rank by who finished first, not who typed a name first. A run
+	// that finished before runs carried the stamp is looked up in run_results
+	// (its ranked row for the day), as the migration backfilled older scores.
+	const finished = input.finishedAt ?? null;
 
 	// D1 has no interactive transaction API, so batch the two writes. `batch`
-	// runs them in order and rejects the whole batch if either statement fails.
+	// runs them in order, as one transaction, and rejects the whole batch if
+	// either statement fails.
+	//
+	// The check above is only a fast path: two submissions racing from one
+	// session (different names, so the unique index does not catch them) would
+	// both pass it. So the insert re-checks inside the transaction, and the
+	// all-time upsert only runs if this very insert happened.
+	let inserted: number;
 	try {
-		await db.batch([
+		const [scores] = await db.batch([
 			db
 				.prepare(
-					`INSERT INTO scores (name, name_key, day, chips, rounds_played, bust, run_id, submitted_at)
-					 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+					`INSERT INTO scores (name, name_key, day, chips, rounds_played, bust, run_id, submitted_at, finished_at)
+					 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, COALESCE(
+					   ?9,
+					   (SELECT MIN(finished_at) FROM run_results WHERE session_id = ?7 AND day = ?3 AND ranked = 1),
+					   ?8
+					 )
+					 WHERE NOT EXISTS (SELECT 1 FROM scores WHERE run_id = ?7 AND day = ?3)`
 				)
 				.bind(
 					input.name,
@@ -208,12 +280,14 @@ export async function submitScore(db: D1Database, input: ScoreInput): Promise<Su
 					input.roundsPlayed,
 					bust,
 					input.runId,
-					now
+					now,
+					finished
 				),
 			db
 				.prepare(
 					`INSERT INTO alltime_best (name_key, name, best_day, best_chips, achieved_at)
-					 VALUES (?1, ?2, ?3, ?4, ?5)
+					 SELECT ?1, ?2, ?3, ?4, finished_at FROM scores
+					 WHERE run_id = ?6 AND day = ?3 AND name_key = ?1 AND submitted_at = ?5
 					 ON CONFLICT(name_key) DO UPDATE SET
 					   name = excluded.name,
 					   best_day = excluded.best_day,
@@ -221,8 +295,11 @@ export async function submitScore(db: D1Database, input: ScoreInput): Promise<Su
 					   achieved_at = excluded.achieved_at
 					 WHERE excluded.best_chips > alltime_best.best_chips`
 				)
-				.bind(nameKey, input.name, input.day, input.chips, now),
+				.bind(nameKey, input.name, input.day, input.chips, now, input.runId),
 		]);
+		// D1 always reports a row count; a result without one (a test double) is
+		// taken as inserted, which is how this behaved before the re-check.
+		inserted = scores?.meta?.changes ?? 1;
 	} catch (error) {
 		// The partial unique index on (day, name_key) is the backstop against two
 		// concurrent submissions racing for the same name.
@@ -232,6 +309,7 @@ export async function submitScore(db: D1Database, input: ScoreInput): Promise<Su
 		}
 		throw error;
 	}
+	if (inserted === 0) return { ok: false, reason: 'already_submitted' };
 
 	return { ok: true };
 }
@@ -249,7 +327,13 @@ interface ScoreRow {
 /**
  * Today's board, or the all-time board.
  *
- * Both are indexed top-N lookups: today reads idx_scores_day_chips, all-time
+ * Equal stacks rank by when the run finished, earliest first, on both boards:
+ * today's by the score's `finished_at`, all-time by `achieved_at`, which is the
+ * finish time of the run that set the record (a later run that only matches it
+ * does not replace it). A last key keeps ranks distinct and stable even for two
+ * finishes in the same millisecond; there are no joint ranks.
+ *
+ * Both are indexed top-N lookups: today reads idx_scores_day_rank, all-time
  * reads idx_alltime_best_chips. Neither degrades as history accumulates.
  */
 export async function getLeaderboard(
@@ -264,9 +348,9 @@ export async function getLeaderboard(
 			? await db
 					.prepare(
 						`SELECT name, chips, day,
-						        rounds_played, bust, submitted_at AS achieved_at
+						        rounds_played, bust, COALESCE(finished_at, submitted_at) AS achieved_at
 						 FROM scores WHERE day = ?1
-						 ORDER BY chips DESC, submitted_at ASC LIMIT ?2`
+						 ORDER BY chips DESC, finished_at ASC, id ASC LIMIT ?2`
 					)
 					.bind(day, LEADERBOARD_LIMIT)
 					.all<ScoreRow>()
@@ -275,7 +359,7 @@ export async function getLeaderboard(
 						`SELECT name, best_chips AS chips, best_day AS day,
 						        NULL AS rounds_played, NULL AS bust, achieved_at
 						 FROM alltime_best
-						 ORDER BY best_chips DESC, achieved_at ASC LIMIT ?1`
+						 ORDER BY best_chips DESC, achieved_at ASC, name_key ASC LIMIT ?1`
 					)
 					.bind(LEADERBOARD_LIMIT)
 					.all<ScoreRow>();

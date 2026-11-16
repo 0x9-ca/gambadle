@@ -55,10 +55,16 @@ function threeCardStraightHigh(cards: readonly Card[]): number | null {
 	if (ranks.length !== 3) return null;
 	if (ranks[0] === ranks[1] || ranks[1] === ranks[2]) return null;
 	if (ranks[2] - ranks[0] === 2) return ranks[2]!;
-	// A-2-3 wheel only.
-	if (ranks[0] === 2 && ranks[1] === 3 && ranks[2] === 14) return 5;
+	// A-2-3 is the lowest straight, three high, with the ace playing low.
+	// Scoring it five high (a five-card habit) tied it with 3-4-5, and then
+	// the ace won the card-by-card tiebreak, so A-2-3 beat 2-3-4 and 3-4-5.
+	if (ranks[0] === 2 && ranks[1] === 3 && ranks[2] === 14) return 3;
 	return null;
 }
+
+/** "Aces", "Kings", "8s": `rankName` gives "A", and "Pair of As" misreads. */
+const PLURAL: Record<number, string> = { 1: 'Aces', 14: 'Aces', 13: 'Kings', 12: 'Queens', 11: 'Jacks' };
+const plural = (rank: number): string => PLURAL[rank] ?? `${rankName(rank)}s`;
 
 export function rankHand(cards: readonly Card[]): RankedHand {
 	const flush = isFlush(cards);
@@ -83,7 +89,7 @@ export function rankHand(cards: readonly Card[]): RankedHand {
 		return {
 			category: 'three of a kind',
 			score: 500 + trips,
-			label: `Three ${rankName(trips)}s`,
+			label: `Three ${plural(trips)}`,
 		};
 	}
 	if (straight !== null) {
@@ -93,7 +99,7 @@ export function rankHand(cards: readonly Card[]): RankedHand {
 		return { category: 'flush', score: 300 + high, label: `${rankName(high)} high Flush` };
 	}
 	if (pair !== null) {
-		return { category: 'pair', score: 200 + pair, label: `Pair of ${rankName(pair)}s` };
+		return { category: 'pair', score: 200 + pair, label: `Pair of ${plural(pair)}` };
 	}
 	return { category: 'high card', score: high, label: `${rankName(high)} high` };
 }
@@ -108,6 +114,20 @@ export function compareHands(a: readonly Card[], b: readonly Card[]): number {
 		if (ra[i] !== rb[i]) return ra[i]! - rb[i]!;
 	}
 	return 0;
+}
+
+/**
+ * The player's hand name, with the deciding card when both hands share a name:
+ * "Pair of 8s, kicker K". Without it "Dealer: Pair of 8s. You: Pair of 8s" does
+ * not say why one of them won.
+ */
+function withKicker(cards: readonly Card[], other: readonly Card[]): string {
+	const label = rankHand(cards).label;
+	if (label !== rankHand(other).label) return label;
+	const mine = sortedRanks(cards).reverse();
+	const theirs = sortedRanks(other).reverse();
+	const at = mine.findIndex((r, i) => r !== theirs[i]);
+	return at < 0 ? label : `${label}, kicker ${rankName(mine[at]!)}`;
 }
 
 /** The dealer must hold queen-high or better. Any pair, flush or straight qualifies. */
@@ -243,9 +263,9 @@ export const threecard: GameHandler = {
 
 		const pairPlus = s.wager.pairPlus ?? 0;
 		if (pairPlus > 0) {
-			const profit = pairPlus * PAIR_PLUS_PAY[hand.category];
-			returned += pairPlus + profit;
-			notes.push(`Pair Plus ${hand.category} ${PAIR_PLUS_PAY[hand.category]}:1`);
+			const pays = PAIR_PLUS_PAY[hand.category];
+			returned += pairPlus + pairPlus * pays;
+			notes.push(pays > 0 ? `Pair Plus pays ${pays}:1` : 'Pair Plus loses');
 		}
 
 		const ante = s.bet;
@@ -265,38 +285,39 @@ export const threecard: GameHandler = {
 				outcome: {
 					stake: ante + pairPlus,
 					returned,
-					detail: notes.length > 0 ? `Folded — ${notes.join(', ')}` : 'Folded',
+					detail: [`You folded ${hand.label}`, ...notes].join('. '),
 				},
 			};
 		}
 
 		s.dealer = [draw(s.shoe), draw(s.shoe), draw(s.shoe)];
 		const dealerHand = rankHand(s.dealer);
-		const dealerHandText = dealerHand.label;
 
 		// The Ante Bonus pays on the player's hand alone, win, lose or bluff.
 		const bonus = ANTE_BONUS_PAY[hand.category];
 		if (bonus !== undefined) {
 			returned += ante * bonus;
-			notes.push(`Ante Bonus ${hand.category} ${bonus}:1`);
+			notes.push(`Ante Bonus pays ${bonus}:1`);
 		}
 
+		// One sentence per side, then the verdict: "Dealer: Pair of 8s. You: Pair
+		// of 8s, kicker K — you win". The side bets follow as their own sentences.
+		let headline: string;
 		if (!dealerQualifies(dealerHand)) {
 			// Dealer does not qualify: the ante wins 1:1 and the Play bet pushes.
 			returned += ante * 2 + ante;
-			notes.push(`Dealer ${dealerHandText} — no qualify, ante pays 1:1, play pushes`);
+			headline = `Dealer: ${dealerHand.label}, does not qualify. You: ${hand.label} — ante pays 1:1, Play pushes`;
 		} else {
-			notes.push(`Dealer ${dealerHandText}`);
 			const cmp = compareHands(s.player, s.dealer);
 			if (cmp > 0) {
 				// Both ante and Play pay 1:1.
 				returned += mainStake * 2;
-				notes.push(`${hand.label} beats it`);
+				headline = `Dealer: ${dealerHand.label}. You: ${withKicker(s.player, s.dealer)} — you win`;
 			} else if (cmp === 0) {
 				returned += mainStake;
-				notes.push('Tie — bets returned');
+				headline = `Dealer: ${dealerHand.label}. You: ${hand.label} — a tie, bets returned`;
 			} else {
-				notes.push(`${dealerHand.label} wins`);
+				headline = `Dealer: ${withKicker(s.dealer, s.player)}. You: ${hand.label} — dealer wins`;
 			}
 		}
 
@@ -306,7 +327,7 @@ export const threecard: GameHandler = {
 			outcome: {
 				stake,
 				returned,
-				detail: notes.join(', '),
+				detail: [headline, ...notes].join('. '),
 			},
 		};
 	},

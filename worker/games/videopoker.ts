@@ -6,8 +6,8 @@
  * pays by VP_PAYS (stake included, so a pair of jacks or better returns the bet).
  *
  * The whole deck is shuffled in `init`, and replacements are simply the next
- * cards in order, so the draw depends on nothing random and the daily seed
- * deals every ranked player the same cards whatever they hold.
+ * cards in order, so the draw makes no new random draw: a run's replacement
+ * cards are fixed at the deal and don't depend on which cards the player holds.
  */
 
 import { VP_LABEL, VP_PAYS, type VpKind } from '../../shared/games';

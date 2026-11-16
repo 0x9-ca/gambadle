@@ -12,10 +12,17 @@
  * hole card is checked before the player acts, a dealer blackjack can never be
  * found after a double or split.
  *
+ * A player blackjack against an ace is offered even money instead: take 1:1 now,
+ * or decline and push against a dealer blackjack (3:2 otherwise). It reuses the
+ * insurance offer and its INSURE / NO_INSURANCE answers, since even money is
+ * exactly insurance on a blackjack, but it costs nothing extra, so it is offered
+ * whatever the stack. The hole card stays down until the player answers.
+ *
  * Doubling doubles that hand's bet and takes exactly one card. A split turns a
  * pair (any two 10-value cards count as a pair) into two hands at the original
- * bet each, up to four hands. Split aces get one card apiece and stand, and 21
- * on a split hand is an ordinary 21, not a blackjack.
+ * bet each, up to four hands. A split hand may double on its first two cards.
+ * Split aces get one card apiece and stand (so they cannot double), and 21 on a
+ * split hand is an ordinary 21, not a blackjack.
  *
  * `Outcome` amounts are absolute chips, so each game stores its own bets in
  * state. Doubles and splits put more chips at risk, so the state also keeps the
@@ -62,8 +69,13 @@ interface BlackjackState {
 	done: boolean;
 	/** Whether the hole card is still face down. */
 	holeDown: boolean;
-	/** Insurance is on offer and the player has not yet answered. */
+	/**
+	 * Insurance is on offer and the player has not yet answered. On a player
+	 * blackjack this is the even-money offer.
+	 */
 	insuranceOffer: boolean;
+	/** The player took even money on a blackjack. Absent on rounds saved before it existed. */
+	evenMoney?: boolean;
 	/** Chips placed on insurance. */
 	insurance: number;
 	/** Whether the player has made any decision, as opposed to the deal settling itself. */
@@ -138,17 +150,24 @@ function insuranceCost(s: BlackjackState): number {
 	return cost >= 1 && s.stack - committed(s) >= cost ? cost : 0;
 }
 
+/** A player blackjack against an ace up, where the insurance offer is even money. */
+function evenMoneyOffered(s: BlackjackState): boolean {
+	return s.insuranceOffer && isBlackjack(s, s.hands[0]!);
+}
+
 function canDouble(s: BlackjackState): boolean {
-	if (s.done) return false;
+	if (s.done || s.insuranceOffer) return false;
 	const hand = s.hands[s.active];
-	if (!hand || hand.cards.length !== 2 || handTotal(hand.cards).total >= 21) return false;
+	// Any two-card hand may double, a split one included; split aces are already
+	// stood, which is what keeps them from doubling.
+	if (!hand || hand.stood || hand.cards.length !== 2 || handTotal(hand.cards).total >= 21) return false;
 	return s.stack - committed(s) >= hand.bet;
 }
 
 function canSplit(s: BlackjackState): boolean {
-	if (s.done || s.hands.length >= MAX_HANDS) return false;
+	if (s.done || s.insuranceOffer || s.hands.length >= MAX_HANDS) return false;
 	const hand = s.hands[s.active];
-	if (!hand || hand.cards.length !== 2) return false;
+	if (!hand || hand.stood || hand.cards.length !== 2) return false;
 	if (cardValue(hand.cards[0]!) !== cardValue(hand.cards[1]!)) return false;
 	return s.stack - committed(s) >= hand.bet;
 }
@@ -172,6 +191,8 @@ function settleHand(s: BlackjackState, hand: PlayerHand): { stake: number; retur
 	const dealerBJ = dealerHasBlackjack(s.dealer);
 	const bet = hand.bet;
 
+	// Even money is fixed whatever the hole card turns out to be.
+	if (playerBJ && s.evenMoney) return { stake: bet, returned: bet * 2, note: 'Blackjack — even money paid 1:1' };
 	if (playerBJ && dealerBJ) return { stake: bet, returned: bet, note: 'Both blackjack — push' };
 	if (playerBJ) {
 		// 3:2 on an even-money bet. Round down the fraction to keep integers.
@@ -246,8 +267,11 @@ function view(s: BlackjackState): GameView {
 		active: s.active,
 		canDouble: canDouble(s),
 		canSplit: canSplit(s),
-		insuranceOffer: s.insuranceOffer ? insuranceCost(s) : null,
+		// Even money costs nothing, so it is not priced as insurance.
+		insuranceOffer: s.insuranceOffer && !evenMoneyOffered(s) ? insuranceCost(s) : null,
 		insured: s.insurance,
+		evenMoneyOffer: evenMoneyOffered(s),
+		evenMoney: s.evenMoney === true,
 		opening: s.done && !s.acted,
 		dealer: dealerView(s.dealer, s.holeDown),
 		trilux: triluxView(s),
@@ -299,9 +323,16 @@ export const blackjack: GameHandler = {
 		};
 		state.firstTwo = state.hands[0]!.cards.slice();
 
-		// Resolve on the deal where the result is already decided.
-		if (isBlackjack(state, state.hands[0]!)) return finish(state);
-		if (state.dealer[0]!.rank === 1 && insuranceCost(state) > 0) {
+		const aceUp = state.dealer[0]!.rank === 1;
+		// Resolve on the deal where the result is already decided. A blackjack
+		// against an ace is not: the player chooses even money first, and that
+		// offer needs no spare chips, so the insurance cost check does not apply.
+		if (isBlackjack(state, state.hands[0]!)) {
+			if (!aceUp) return finish(state);
+			state.insuranceOffer = true;
+			return { state, view: view(state), outcome: null };
+		}
+		if (aceUp && insuranceCost(state) > 0) {
 			// Ace up: ask about insurance before the hole card is checked.
 			state.insuranceOffer = true;
 			return { state, view: view(state), outcome: null };
@@ -331,6 +362,12 @@ export const blackjack: GameHandler = {
 		if (s.insuranceOffer) {
 			if (action.type !== 'INSURE' && action.type !== 'NO_INSURANCE') {
 				throw new GameError('illegal_action', 'answer the insurance offer first');
+			}
+			if (evenMoneyOffered(s)) {
+				// Either answer settles the blackjack: even money now, or 3:2 / push.
+				if (action.type === 'INSURE') s.evenMoney = true;
+				s.insuranceOffer = false;
+				return finish(s);
 			}
 			if (action.type === 'INSURE') s.insurance = insuranceCost(s);
 			s.insuranceOffer = false;

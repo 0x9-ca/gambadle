@@ -222,6 +222,14 @@ export type GameView = GameViewBase &
 				insuranceOffer: number | null;
 				/** Chips placed on insurance, 0 if none. */
 				insured: number;
+				/**
+				 * A blackjack against an ace up: the player is offered even money
+				 * (answered with INSURE to take it, NO_INSURANCE to decline), and
+				 * `insuranceOffer` is null. Absent on views saved before it existed.
+				 */
+				evenMoneyOffer?: boolean;
+				/** The player took even money. Absent on views saved before it existed. */
+				evenMoney?: boolean;
 				/** True when the round ended on the deal itself, before the player decided anything. */
 				opening: boolean;
 				dealer: HandView;
@@ -243,7 +251,18 @@ export type GameView = GameViewBase &
 				opening: boolean;
 		  }
 		| { game: 'coinflip'; result: 'heads' | 'tails'; won: boolean }
-		| { game: 'dice'; roll: number; dice: number[]; won: boolean }
+		| {
+				game: 'dice';
+				roll: number;
+				dice: number[];
+				won: boolean;
+				/**
+				 * The roll-under target and the chips bet, so the board can show the
+				 * wager. Optional: views stored before they were added lack them.
+				 */
+				target?: number;
+				bet?: number;
+		  }
 		| {
 				game: 'slots';
 				/** The spins in order; empty until the SPIN is played. */
@@ -284,6 +303,8 @@ export type GameView = GameViewBase &
 		| {
 				game: 'craps';
 				side: 'pass' | 'dontpass';
+				/** Chips on the line bet. Optional: views stored before it was added lack it. */
+				bet?: number;
 				/** The point once set on the come-out roll, else null. */
 				point: number | null;
 				/** Every roll so far, in order. */
@@ -453,11 +474,27 @@ export interface RunState {
 	 */
 	eligible: boolean;
 	/**
-	 * Set on the daily ranked run: the ET day every draw is derived from, so all
-	 * ranked players get the same games and outcomes. Null/absent means fully
-	 * random (unranked runs, and runs saved before this existed).
+	 * Set on the daily ranked run: the ET day its draws are derived from. Every
+	 * ranked player that day gets the same games (the lineup is drawn from the
+	 * day alone), but outcomes also mix in `nonce`, so they differ per player.
+	 * Null/absent means fully random (unranked runs, and runs saved before this
+	 * existed).
 	 */
 	seed?: string | null;
+	/**
+	 * Ranked runs only: a random value drawn once at START and mixed into every
+	 * outcome draw (deals, spins, rolls, doubles), so one player's results say
+	 * nothing about another's while a retried request still draws the same.
+	 * Server-only: `publicRun` strips it. Absent on runs saved before it existed,
+	 * whose outcomes then fall back to the day alone.
+	 */
+	nonce?: string | null;
+	/**
+	 * When the run reached `finished` (ms since the epoch), stamped by the
+	 * Worker. It breaks leaderboard ties: of equal stacks, the earlier finish
+	 * ranks higher. Absent before the run ends and on runs saved before it existed.
+	 */
+	finishedAt?: number | null;
 	/**
 	 * Staging only: the one game this practice run plays, round after round, with
 	 * no round limit and no leaderboard or stats. Absent on real runs.
@@ -577,8 +614,9 @@ export interface StatsView {
 
 /**
  * Today's ranked players against each other. Every ranked run gets the same
- * games and the same outcomes, so a round can be compared directly: how many
- * won it, what the field made on its stake, and what this player did.
+ * games (each player's own deals, spins and rolls), so a round compares how
+ * players fared on the same game: how many won it, what the field made on its
+ * stake, and what this player did.
  */
 export interface DailyView {
 	day: string;
